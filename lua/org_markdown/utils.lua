@@ -81,7 +81,7 @@ local function create_float_window(buf, opts)
 		border = "rounded",
 		title = opts.title or "",
 		title_pos = "center",
-		footer = opts.footer, -- <-- new
+		footer = opts.footer or "", -- <-- new
 		footer_pos = opts.footer_pos or "center",
 	})
 

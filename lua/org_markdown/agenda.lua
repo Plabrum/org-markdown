@@ -131,9 +131,10 @@ end
 function M.show_calendar()
 	local lines = get_calendar_lines()
 	local buf, win = utils.open_window({
-		title = "AgendaCalendar",
+		title = "Agenda Calendar",
 		filetype = "markdown",
 		method = "float",
+		footer = "Press q to close",
 	})
 	vim.api.nvim_buf_set_lines(buf, 0, -1, false, lines)
 	vim.bo[buf].modifiable = false
@@ -142,9 +143,10 @@ end
 function M.show_tasks()
 	local lines = get_task_lines()
 	local buf, win = utils.open_window({
-		title = "AgendaTask",
+		title = "Agenda Task",
 		filetype = "markdown",
 		method = "float",
+		footer = "Press q to close",
 	})
 	vim.api.nvim_buf_set_lines(buf, 0, -1, false, lines)
 	vim.bo[buf].modifiable = false
@@ -152,41 +154,27 @@ end
 
 function M.show_combined()
 	local task_lines = get_task_lines()
-	local cal_lines = get_calendar_lines()
+	local calendar_lines = get_calendar_lines()
 
+	-- Open window first to get its actual width
 	local buf, win = utils.open_window({
 		title = "Agenda",
 		filetype = "markdown",
 		method = "float",
+		footer = "Press q to close",
 	})
 
+	-- Get actual window width
 	local win_width = vim.api.nvim_win_get_width(win)
-	local sep = " │ "
-	local sep_width = #sep
+	local separator = string.rep("-", win_width)
 
-	-- Adjust widths so total fits the window exactly
-	local left_width = math.floor((win_width - sep_width) / 2)
-	local right_width = win_width - sep_width - left_width
+	-- Add separator and combine
+	table.insert(task_lines, separator)
+	local combined_lines = vim.list_extend(task_lines, calendar_lines)
 
-	local line_count = math.max(#task_lines, #cal_lines)
-	local lines = {}
-
-	for i = 1, line_count do
-		local left = task_lines[i] or ""
-		local right = cal_lines[i] or ""
-
-		left = left:sub(1, left_width)
-		right = right:sub(1, right_width)
-
-		local left_pad = left .. string.rep(" ", left_width - vim.fn.strdisplaywidth(left))
-		local right_pad = right .. string.rep(" ", right_width - vim.fn.strdisplaywidth(right))
-
-		table.insert(lines, left_pad .. sep .. right_pad)
-	end
-
-	vim.api.nvim_buf_set_lines(buf, 0, -1, false, lines)
+	-- Display content
+	vim.api.nvim_buf_set_lines(buf, 0, -1, false, combined_lines)
 	vim.bo[buf].modifiable = false
-	vim.bo[buf].buflisted = false
 end
 
 return M
