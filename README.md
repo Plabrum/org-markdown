@@ -1,2 +1,2 @@
 # org-markdown
-Like org, but with markdwon
+Like org, but with markdown
