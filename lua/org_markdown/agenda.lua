@@ -1,30 +1,12 @@
 -- org_markdown/agenda/calendar.lua + tasks.lua
 local config = require("org_markdown.config")
 local utils = require("org_markdown.utils")
+local parser = require("org_markdown.parser")
+local formatter = require("org_markdown.formatter")
 
 local M = {}
 
-local ns = vim.api.nvim_create_namespace("org_markdown_agenda")
-
--- Matchers
-local function parse_heading(line)
-	local state, priority, text = line:match("^#+%s+(%u+)%s+(%[%#%u%])?%s*(.-)%s*$")
-	if not state or (state ~= "TODO" and state ~= "IN_PROGRESS") then
-		return nil
-	end
-	local tags = {}
-	for tag in line:gmatch(":([%w_-]+):") do
-		table.insert(tags, tag)
-	end
-	local pri = priority and priority:match("%[(#%u)%]") or nil
-	return state, pri, text, tags
-end
-
-local function extract_date(line)
-	local tracked = line:match("<(%d%d%d%d%-%d%d%-%d%d)>")
-	local untracked = line:match("%[(%d%d%d%d%-%d%d%-%d%d)%]")
-	return tracked, untracked
-end
+-- local ns = vim.api.nvim_create_namespace("org_markdown_agenda")
 
 -- Returns table of agenda items
 local function scan_files()
@@ -34,9 +16,9 @@ local function scan_files()
 	for _, file in ipairs(files) do
 		local lines = utils.read_lines(file)
 		for i, line in ipairs(lines) do
-			local state, priority, text, tags = parse_heading(line)
+			local state, priority, text, tags = parser.parse_heading(line)
 			if state then
-				local tracked_date, _ = extract_date(line)
+				local tracked_date, _ = parser.extract_date(line)
 				if tracked_date then
 					table.insert(agenda_items, {
 						title = text,
@@ -54,12 +36,6 @@ local function scan_files()
 	end
 
 	return agenda_items
-end
-
-local function format_date(date_str)
-	local y, m, d = date_str:match("(%d+)%-(%d+)%-(%d+)")
-	local time = os.time({ year = y, month = m, day = d })
-	return os.date("%A %d %b", time)
 end
 
 local function get_next_seven_days()
@@ -98,7 +74,7 @@ local function get_calendar_lines()
 	table.insert(lines, "")
 
 	for _, date in ipairs(get_next_seven_days()) do
-		table.insert(lines, "  " .. format_date(date))
+		table.insert(lines, "  " .. formatter.format_date(date))
 		local day_items = grouped[date]
 		if #day_items == 0 then
 			table.insert(lines, "    (no entries)")
