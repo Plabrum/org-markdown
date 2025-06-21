@@ -43,6 +43,22 @@ function M.safe_extend(base, more)
 	return vim.list_extend(base or {}, more or {})
 end
 
+function M.open_prompt(label)
+	local result = nil
+	local done = false
+
+	vim.ui.input({ prompt = label .. ": " }, function(input)
+		result = input or ""
+		done = true
+	end)
+
+	vim.wait(10000, function()
+		return done
+	end, 10)
+
+	return result
+end
+
 -- Shared: create reusable buffer
 local function create_buffer(opts)
 	local buf = vim.api.nvim_create_buf(false, true)
@@ -137,20 +153,6 @@ function M.open_window(opts)
 	end
 end
 
-function M.find_markdown_files()
-	local files = {}
-	for _, dir in ipairs(config.refile_paths or {}) do
-		local expanded = vim.fn.expand(dir)
-		local matches = vim.fn.globpath(expanded, "**/*.md", true, true)
-		for _, f in ipairs(matches) do
-			if vim.fn.filereadable(f) == 1 then
-				table.insert(files, f)
-			end
-		end
-	end
-	return files
-end
-
 function M.append_lines(filepath, lines)
 	local buf_lines = M.read_lines(filepath)
 	for _, line in ipairs(lines) do
@@ -159,64 +161,26 @@ function M.append_lines(filepath, lines)
 	M.write_lines(filepath, buf_lines)
 end
 
-function M.insert_under_heading(filepath, heading, content)
+function M.insert_under_heading(filepath, heading_text, content_lines)
 	local lines = M.read_lines(filepath)
 	local out = {}
 	local inserted = false
-	for _, line in ipairs(lines) do
+
+	for i, line in ipairs(lines) do
 		table.insert(out, line)
-		if not inserted and line:match("^#+%s+" .. vim.pesc(heading) .. "%s*$") then
-			table.insert(out, content)
+		if not inserted and line:match("^#+%s+" .. vim.pesc(heading_text) .. "%s*$") then
+			vim.list_extend(out, content_lines)
 			inserted = true
 		end
 	end
+
+	if not inserted then
+		table.insert(out, "")
+		table.insert(out, "# " .. heading_text)
+		vim.list_extend(out, content_lines)
+	end
+
 	M.write_lines(filepath, out)
 end
 
-function M.get_refile_target()
-	local cursor = vim.api.nvim_win_get_cursor(0)
-	local row = cursor[1] - 1
-	local lines = vim.api.nvim_buf_get_lines(0, 0, -1, false)
-	local current = lines[row]
-	current = current:match("^%s*(.*)")
-	-- 1. Bullet match
-	if current:match("^%s*[-*+] %[[ x%-]%)") or current:match("^%s*[-*+] ") then
-		return {
-			lines = { current },
-			start_line = row,
-			end_line = row + 1,
-		}
-	end
-
-	-- 2. Heading match
-	local heading_level, heading_text = current:match("^(#+)%s*(.*)")
-	if heading_level then
-		local start_line = row
-		local end_line = start_line + 1
-		local current_level = #heading_level
-
-		while end_line <= #lines do
-			local next_line = lines[end_line]
-			local next_level = next_line:match("^(#+)")
-			if next_level and #next_level <= current_level then
-				break
-			end
-			end_line = end_line + 1
-		end
-
-		local range = {}
-		for i = start_line, end_line - 1 do
-			table.insert(range, lines[i])
-		end
-
-		return {
-			lines = range,
-			start_line = start_line,
-			end_line = end_line,
-		}
-	end
-
-	vim.notify("No bullet or heading detected to refile", vim.log.levels.ERROR)
-	return nil
-end
 return M
