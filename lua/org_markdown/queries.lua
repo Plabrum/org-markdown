@@ -1,50 +1,55 @@
+local async = require("org_markdown.async")
+local config = require("org_markdown.config")
+
 local M = {}
 
-function M.get_refile_target()
-	local cursor = vim.api.nvim_win_get_cursor(0)
-	local row = cursor[1] - 1
-	local lines = vim.api.nvim_buf_get_lines(0, 0, -1, false)
-	local current = lines[row]
-	current = current:match("^%s*(.*)")
-	-- 1. Bullet match
-	if current:match("^%s*[-*+] %[[ x%-]%)") or current:match("^%s*[-*+] ") then
-		return {
-			lines = { current },
-			start_line = row,
-			end_line = row + 1,
-		}
+local function is_markdown(file)
+	return file:match("%.md$") or file:match("%.markdown$")
+end
+
+local function scan_dir_sync(dir, collected)
+	local handle = vim.uv.fs_scandir(dir)
+	if not handle then
+		return
 	end
 
-	-- 2. Heading match
-	local heading_level, heading_text = current:match("^(#+)%s*(.*)")
-	if heading_level then
-		local start_line = row
-		local end_line = start_line + 1
-		local current_level = #heading_level
-
-		while end_line <= #lines do
-			local next_line = lines[end_line]
-			local next_level = next_line:match("^(#+)")
-			if next_level and #next_level <= current_level then
-				break
-			end
-			end_line = end_line + 1
+	while true do
+		local name, type_ = vim.uv.fs_scandir_next(handle)
+		if not name then
+			break
 		end
 
-		local range = {}
-		for i = start_line, end_line - 1 do
-			table.insert(range, lines[i])
+		local full_path = dir .. "/" .. name
+		if type_ == "file" and is_markdown(name) then
+			table.insert(collected, full_path)
+		elseif type_ == "directory" then
+			scan_dir_sync(full_path, collected)
 		end
+	end
+end
 
-		return {
-			lines = range,
-			start_line = start_line,
-			end_line = end_line,
-		}
+--- Public sync markdown file finder
+---@param opts? { use_cwd?: boolean }
+---@return string[] markdown_files
+function M.find_markdown_files(opts)
+	opts = opts or {}
+	local use_cwd = opts.use_cwd or false
+
+	local roots = {}
+	if use_cwd then
+		table.insert(roots, vim.uv.cwd())
+	else
+		for _, path in ipairs(config.refile_paths or {}) do
+			table.insert(roots, vim.fn.expand(path))
+		end
 	end
 
-	vim.notify("No bullet or heading detected to refile", vim.log.levels.ERROR)
-	return nil
+	local all_files = {}
+	for _, root in ipairs(roots) do
+		scan_dir_sync(root, all_files)
+	end
+
+	return all_files
 end
 
 return M

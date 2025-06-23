@@ -1,5 +1,4 @@
 local M = {
-	agenda_files = { "~/notes", "~/projects" },
 	default_tags = { "todo", "inbox" },
 	capture_templates = {},
 	default_capture = "inbox",
@@ -7,8 +6,12 @@ local M = {
 	picker = "telescope", -- or "snacks"
 	refile_paths = { "~/notes", "~/projects" },
 	keymaps = {
-		capture = "<leader>on",
-		agenda = "<leader>ov",
+		capture = "<leader>onn",
+		agenda = "<leader>onv",
+		find_file = "<leader>onf",
+		find_heading = "<leader>onh",
+		refile_to_file = "<leader>onrf",
+		refile_to_heading = "<leader>onrh",
 	},
 }
 
