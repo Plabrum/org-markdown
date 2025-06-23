@@ -47,13 +47,15 @@ function M.open_capture_buffer(content, cursor_row, cursor_col, tpl)
 		utils.set_cursor(win, cursor_row, cursor_col, "i")
 
 		-- Submit buffer
-		vim.keymap.set("n", "<C-c><C-c>", function()
+		local function submit_buffer()
 			local lines = vim.api.nvim_buf_get_lines(buf, 0, -1, false)
 			local trimmed_lines = utils.trim_trailing_whitespace(lines)
 			local joined = table.concat(trimmed_lines, "\n")
 			vim.api.nvim_win_close(win, true)
 			resolve(joined)
-		end, { buffer = buf })
+		end
+		vim.keymap.set("n", "<C-c><C-c>", submit_buffer, { buffer = buf })
+		vim.keymap.set("n", "<leader><CR>", submit_buffer, { buffer = buf })
 
 		-- Jump to next %?
 		vim.keymap.set("n", "<Tab>", function()
