@@ -4,46 +4,49 @@ local T = MiniTest.new_set()
 local parser = require("org_markdown.parser")
 
 -- Heading Parsing
--- T["parse_heading - TODO with priority and tags"] = function()
--- 	local line = "# TODO [#A] Write tests :work:urgent:"
--- 	local state, pri, text, tags = parser.parse_heading(line)
--- 	MiniTest.expect.equality(state, "TODO")
--- 	MiniTest.expect.equality(pri, "#A")
--- 	MiniTest.expect.equality(text, "Write tests")
--- 	MiniTest.expect.equality(tags[1], "work")
--- 	MiniTest.expect.equality(tags[2], "urgent")
--- end
---
--- T["parse_heading - IN_PROGRESS without priority"] = function()
--- 	local line = "# IN_PROGRESS Refactor parser :dev:"
--- 	local state, pri, text, tags = parser.parse_heading(line)
--- 	MiniTest.expect.equality(state, "IN_PROGRESS")
--- 	MiniTest.expect.equality(pri, nil)
--- 	MiniTest.expect.equality(text, "Refactor parser")
--- 	MiniTest.expect.equality(tags[1], "dev")
--- end
---
--- T["parse_heading - ignored DONE heading"] = function()
--- 	local line = "# DONE [#B] Completed work :done:"
--- 	local state = parser.parse_heading(line)
--- 	MiniTest.expect.equality(state, nil)
--- end
+T["parse_heading - TODO with priority and tags"] = function()
+	local line = "# TODO [#A] Write tests :work:urgent:"
+	local result = parser.parse_heading(line)
+	local tags = parser.extract_tags(line)
+	MiniTest.expect.equality(result.state, "TODO")
+	MiniTest.expect.equality(result.priority, "#A")
+	MiniTest.expect.equality(result.text, "Write tests")
+	MiniTest.expect.equality(tags[1], "work")
+	MiniTest.expect.equality(tags[2], "urgent")
+end
+
+T["parse_heading - IN_PROGRESS without priority"] = function()
+	local line = "# IN_PROGRESS Refactor parser :dev:"
+	local result = parser.parse_heading(line)
+	local tags = parser.extract_tags(line)
+	MiniTest.expect.equality(result.state, "IN_PROGRESS")
+	MiniTest.expect.equality(result.priority, nil)
+	MiniTest.expect.equality(result.text, "Refactor parser")
+	MiniTest.expect.equality(tags[1], "dev")
+end
+
+T["parse_heading - ignored DONE heading"] = function()
+	local line = "# DONE [#B] Completed work :done:"
+	local result = parser.parse_heading(line)
+	MiniTest.expect.equality(result.state, "DONE") -- parser no longer filters these
+	MiniTest.expect.equality(result.priority, "#B")
+	MiniTest.expect.equality(result.text, "Completed work")
+end
 
 -- Date Extraction
--- T["extract_date - tracked and untracked dates"] = function()
--- 	local line = "- [ ] TODO task <2025-06-22> [2025-06-23]"
--- 	local tracked, untracked = parser.extract_date(line)
--- 	MiniTest.expect.equality(tracked, "2025-06-22")
--- 	MiniTest.expect.equality(untracked, "2025-06-23")
--- end
---
--- T["extract_date - no date returns nil"] = function()
--- 	local line = "No date here"
--- 	local tracked, untracked = parser.extract_date(line)
--- 	MiniTest.expect.equality(tracked, nil)
--- 	MiniTest.expect.equality(untracked, nil)
--- end
+T["extract_date - tracked and untracked dates"] = function()
+	local line = "- [ ] TODO task <2025-06-22> [2025-06-23]"
+	local tracked, untracked = parser.extract_date(line)
+	MiniTest.expect.equality(tracked, "2025-06-22")
+	MiniTest.expect.equality(untracked, "2025-06-23")
+end
 
+T["extract_date - no date returns nil"] = function()
+	local line = "No date here"
+	local tracked, untracked = parser.extract_date(line)
+	MiniTest.expect.equality(tracked, nil)
+	MiniTest.expect.equality(untracked, nil)
+end
 -- Safe substitution (with capture characters)
 local function capture_template_escape(marker)
 	return parser.escape_marker(marker, { "^", "?", "%" })
