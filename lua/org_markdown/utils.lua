@@ -1,4 +1,5 @@
 local config = require("org_markdown.config")
+local async = require("org_markdown.async")
 
 local M = {}
 
@@ -39,24 +40,43 @@ function M.write_lines(path, lines)
 	f:close()
 end
 
-function M.safe_extend(base, more)
-	return vim.list_extend(base or {}, more or {})
+function M.open_prompt(label)
+	return async.wrap(function(_, callback)
+		vim.ui.input({ prompt = label .. ": " }, callback)
+	end)()
 end
 
-function M.open_prompt(label)
-	local result = nil
-	local done = false
+-- used for turning a find result into a row/col position
+--- @param text string: the text to search in
+--- @param byte_index integer: the byte index to convert
+--- @return integer, integer: row and column indices (0-based)
+function M.byte_index_to_row_col(text, byte_index)
+	local row, col = 0, 0
+	local current_index = 1
+	for line in text:gmatch("([^\n]*)\n?") do
+		local line_len = #line + 1 -- include newline
+		if byte_index < current_index + line_len then
+			col = byte_index - current_index
+			return row, col
+		end
+		current_index = current_index + line_len
+		row = row + 1
+	end
+	return row, col
+end
 
-	vim.ui.input({ prompt = label .. ": " }, function(input)
-		result = input or ""
-		done = true
-	end)
-
-	vim.wait(10000, function()
-		return done
-	end, 10)
-
-	return result
+--- Move the cursor to (row, col) in the given window and optionally enter mode
+--- @param win integer: window ID
+--- @param row integer: 0-based row
+--- @param col integer: 0-based column
+--- @param mode string: 'n' for normal, 'i' for insert
+function M.set_cursor(win, row, col, mode)
+	vim.api.nvim_win_set_cursor(win, { row + 1, col })
+	if mode == "i" then
+		vim.cmd("startinsert!")
+	elseif mode == "n" then
+		vim.cmd("stopinsert")
+	end
 end
 
 -- Shared: create reusable buffer
@@ -77,6 +97,49 @@ local function set_close_keys(buf, win)
 	vim.keymap.set("n", "<Esc>", function()
 		vim.api.nvim_win_close(win, true)
 	end, { buffer = buf, silent = true })
+end
+
+-- inline prompt window
+local function create_inline_prompt_window(buf, opts)
+	local width = opts.width or 30
+	local row = opts.row or 1
+	local col = opts.col or 0
+
+	local win = vim.api.nvim_open_win(buf, true, {
+		relative = "cursor",
+		row = row,
+		col = col,
+		width = width,
+		height = 1,
+		style = "minimal",
+		border = opts.border or "none",
+		title = opts.title,
+		title_pos = opts.title_pos or "center",
+	})
+
+	vim.bo[buf].buftype = "prompt"
+	vim.fn.prompt_setprompt(buf, opts.prompt or "")
+
+	if opts.on_submit then
+		vim.fn.prompt_setcallback(buf, function(input)
+			vim.api.nvim_win_close(win, true)
+			opts.on_submit(input)
+		end)
+	end
+
+	if opts.on_close then
+		vim.api.nvim_buf_attach(buf, false, {
+			on_detach = function()
+				opts.on_close()
+			end,
+		})
+	end
+
+	set_close_keys(buf, win)
+
+	vim.cmd.startinsert()
+
+	return buf, win
 end
 
 -- Floating window
@@ -148,6 +211,8 @@ function M.open_window(opts)
 		return create_float_window(buf, opts)
 	elseif method == "horizontal" then
 		return create_horizontal_window(buf, opts)
+	elseif method == "inline_prompt" then
+		return create_inline_prompt_window(buf, opts)
 	else
 		error("Unknown window method: " .. method)
 	end
@@ -181,6 +246,20 @@ function M.insert_under_heading(filepath, heading_text, content_lines)
 	end
 
 	M.write_lines(filepath, out)
+end
+
+--- Removes trailing empty or whitespace-only lines from a list of lines
+--- @param lines string[]
+--- @return string[]: a new table with trailing whitespace removed
+function M.trim_trailing_whitespace(lines)
+	-- Make a shallow copy to avoid mutating the original table
+	local trimmed = vim.deepcopy(lines)
+
+	while #trimmed > 0 and trimmed[#trimmed]:match("^%s*$") do
+		table.remove(trimmed)
+	end
+
+	return trimmed
 end
 
 return M

@@ -3,14 +3,13 @@ local config = require("org_markdown.config")
 local utils = require("org_markdown.utils")
 local parser = require("org_markdown.parser")
 local formatter = require("org_markdown.formatter")
+local queries = require("org_markdown.queries")
 
 local M = {}
 
--- local ns = vim.api.nvim_create_namespace("org_markdown_agenda")
-
 -- Returns table of agenda items
 local function scan_files()
-	local files = utils.find_markdown_files()
+	local files = queries.find_markdown_files()
 	local agenda_items = {}
 
 	for _, file in ipairs(files) do
