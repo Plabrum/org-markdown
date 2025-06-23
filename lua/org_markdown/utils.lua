@@ -226,26 +226,64 @@ function M.append_lines(filepath, lines)
 	M.write_lines(filepath, buf_lines)
 end
 
-function M.insert_under_heading(filepath, heading_text, content_lines)
-	local lines = M.read_lines(filepath)
-	local out = {}
-	local inserted = false
-
-	for i, line in ipairs(lines) do
-		table.insert(out, line)
-		if not inserted and line:match("^#+%s+" .. vim.pesc(heading_text) .. "%s*$") then
-			vim.list_extend(out, content_lines)
-			inserted = true
+-- Helper: Adjust heading levels to be children of given base level
+function M.adjust_heading_levels(lines, base_level)
+	local adjusted = {}
+	for _, line in ipairs(lines) do
+		local hashes, title = line:match("^(#+)%s+(.*)")
+		if hashes and title then
+			local new_level = string.rep("#", base_level + #hashes)
+			table.insert(adjusted, new_level .. " " .. title)
+		else
+			table.insert(adjusted, line)
 		end
 	end
+	return adjusted
+end
 
-	if not inserted then
-		table.insert(out, "")
-		table.insert(out, "# " .. heading_text)
-		vim.list_extend(out, content_lines)
+-- Helper: Find heading range (start line, heading level, end line of subtree)
+function M.find_heading_range(lines, heading_text)
+	for i, line in ipairs(lines) do
+		local match = line:match("^(#+)%s+" .. vim.pesc(heading_text) .. "%s*$")
+		if match then
+			local base_level = #match
+			local end_index = #lines + 1 -- default: end of file
+
+			for j = i + 1, #lines do
+				local next_heading = lines[j]:match("^(#+)")
+				if next_heading and #next_heading <= base_level then
+					end_index = j
+					break
+				end
+			end
+
+			return i, base_level, end_index
+		end
+	end
+	return nil, nil, nil
+end
+
+-- Main function
+function M.insert_under_heading(filepath, heading_text, content_lines)
+	local lines = M.read_lines(filepath)
+
+	local start_idx, base_level, insert_idx = M.find_heading_range(lines, heading_text)
+
+	if start_idx and insert_idx then
+		local adjusted_content = M.adjust_heading_levels(content_lines, base_level)
+
+		-- Insert content before next sibling heading (or end of file)
+		for i = #adjusted_content, 1, -1 do
+			table.insert(lines, insert_idx, adjusted_content[i])
+		end
+	else
+		-- Heading not found — add it at EOF
+		table.insert(lines, "")
+		table.insert(lines, "# " .. heading_text)
+		vim.list_extend(lines, content_lines)
 	end
 
-	M.write_lines(filepath, out)
+	M.write_lines(filepath, lines)
 end
 
 --- Removes trailing empty or whitespace-only lines from a list of lines
