@@ -31,7 +31,7 @@ local function scan_files()
 	for _, file in ipairs(files) do
 		local lines = utils.read_lines(file)
 		for i, line in ipairs(lines) do
-			local heading = parser.parse_heading(line)
+			local heading = parser.parse_headline(line)
 			if heading and heading.state then
 				table.insert(agenda_items.tasks, {
 					title = heading.text,

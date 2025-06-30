@@ -6,7 +6,7 @@ local parser = require("org_markdown.parser")
 -- Heading Parsing
 T["parse_heading - TODO with priority and tags"] = function()
 	local line = "# TODO [#A] Write tests :work:urgent:"
-	local result = parser.parse_heading(line)
+	local result = parser.parse_headline(line)
 	local tags = parser.extract_tags(line)
 	MiniTest.expect.equality(result.state, "TODO")
 	MiniTest.expect.equality(result.priority, "#A")
@@ -17,7 +17,7 @@ end
 
 T["parse_heading - IN_PROGRESS without priority"] = function()
 	local line = "# IN_PROGRESS Refactor parser :dev:"
-	local result = parser.parse_heading(line)
+	local result = parser.parse_headline(line)
 	local tags = parser.extract_tags(line)
 	MiniTest.expect.equality(result.state, "IN_PROGRESS")
 	MiniTest.expect.equality(result.priority, nil)
@@ -27,7 +27,7 @@ end
 
 T["parse_heading - ignored DONE heading"] = function()
 	local line = "# DONE [#B] Completed work :done:"
-	local result = parser.parse_heading(line)
+	local result = parser.parse_headline(line)
 	MiniTest.expect.equality(result.state, "DONE") -- parser no longer filters these
 	MiniTest.expect.equality(result.priority, "#B")
 	MiniTest.expect.equality(result.text, "Completed work")

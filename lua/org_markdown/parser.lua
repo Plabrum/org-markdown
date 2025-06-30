@@ -71,7 +71,7 @@ function M.extract_tags(line)
 	return tags
 end
 
-function M.parse_heading(line)
+function M.parse_headline(line)
 	if not line:match("^#+%s") then
 		return nil
 	end
