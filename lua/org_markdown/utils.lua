@@ -94,14 +94,18 @@ local function set_close_keys(buf, win, opts)
 		if opts.on_close then
 			opts.on_close(buf)
 		end
-		vim.api.nvim_win_close(win, true)
+		if not opts.preseve_window then
+			vim.api.nvim_win_close(win, true)
+		end
 	end, { buffer = buf, silent = true })
 
 	vim.keymap.set("n", "<Esc>", function()
 		if opts.on_close then
 			opts.on_close(buf)
 		end
-		vim.api.nvim_win_close(win, true)
+		if not opts.preseve_window then
+			vim.api.nvim_win_close(win, true)
+		end
 	end, { buffer = buf, silent = true })
 end
 
@@ -201,6 +205,102 @@ local function create_horizontal_window(buf, opts)
 	return buf, win
 end
 
+local function create_vertical_window(buf, opts)
+	vim.cmd("vsplit")
+	local win = vim.api.nvim_get_current_win()
+	vim.api.nvim_win_set_buf(win, buf)
+	vim.api.nvim_win_set_width(win, opts.width or math.floor(vim.o.columns * 0.3))
+
+	if opts.title then
+		vim.api.nvim_buf_set_lines(buf, 0, 0, false, {
+			"# " .. opts.title,
+			"", -- padding
+		})
+	end
+
+	if opts.footer then
+		local footer_text = type(opts.footer) == "table" and table.concat(opts.footer, " | ") or opts.footer
+		vim.wo[win].statusline = footer_text
+	end
+
+	if not opts.preserve_focus then
+		vim.api.nvim_set_current_win(win)
+	end
+
+	set_close_keys(buf, win, opts)
+	return buf, win
+end
+
+local function open_in_next_window(buf)
+	local current_tab = vim.api.nvim_get_current_tabpage()
+	local current_win = vim.api.nvim_get_current_win()
+
+	-- Get only normal (non-floating) windows
+	local all_wins = vim.api.nvim_tabpage_list_wins(current_tab)
+	local wins = {}
+
+	for _, win in ipairs(all_wins) do
+		local cfg = vim.api.nvim_win_get_config(win)
+		if cfg.relative == "" then
+			table.insert(wins, win)
+		end
+	end
+
+	if #wins == 1 then
+		vim.cmd("vsplit")
+		local new_win = vim.api.nvim_get_current_win()
+		vim.api.nvim_win_set_buf(new_win, buf)
+		return buf, new_win
+	else
+		-- Find index of current normal window
+		local index = nil
+		for i, win in ipairs(wins) do
+			if win == current_win then
+				index = i
+				break
+			end
+		end
+
+		-- Fallback in case current_win was not found
+		if not index then
+			vim.api.nvim_win_set_buf(wins[1], buf)
+			return buf, wins[1]
+		end
+
+		local next_index = (index % #wins) + 1
+		local next_win = wins[next_index]
+		vim.api.nvim_set_current_win(next_win)
+		vim.api.nvim_win_set_buf(next_win, buf)
+		return buf, next_win
+	end
+end
+
+local function create_window_in_place(buf, opts)
+	opts = opts or {}
+
+	local _, win = open_in_next_window(buf)
+
+	if opts.title then
+		vim.api.nvim_buf_set_lines(buf, 0, 0, false, {
+			"# " .. opts.title,
+			"",
+		})
+	end
+
+	if opts.footer then
+		local footer_text = type(opts.footer) == "table" and table.concat(opts.footer, " | ") or opts.footer
+		vim.wo[win].statusline = footer_text
+	end
+
+	if not opts.preserve_focus then
+		vim.api.nvim_set_current_win(win)
+	end
+
+	-- Spread `opts` and inject `preserve_window = true` non-destructively
+	set_close_keys(buf, win, vim.tbl_extend("force", opts, { preserve_window = true }))
+	return buf, win
+end
+
 -- Public API
 function M.open_window(opts)
 	local method = opts.method or "float"
@@ -212,6 +312,10 @@ function M.open_window(opts)
 		return create_horizontal_window(buf, opts)
 	elseif method == "inline_prompt" then
 		return create_inline_prompt_window(buf, opts)
+	elseif method == "vertical" then
+		return create_vertical_window(buf, opts)
+	elseif method == "next_vertical" then
+		return create_window_in_place(buf, opts)
 	else
 		error("Unknown window method: " .. method)
 	end
