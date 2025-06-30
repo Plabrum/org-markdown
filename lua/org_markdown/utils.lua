@@ -89,12 +89,18 @@ local function create_buffer(opts)
 end
 
 -- set close keymaps
-local function set_close_keys(buf, win)
+local function set_close_keys(buf, win, opts)
 	vim.keymap.set("n", "q", function()
+		if opts.on_close then
+			opts.on_close(buf)
+		end
 		vim.api.nvim_win_close(win, true)
 	end, { buffer = buf, silent = true })
 
 	vim.keymap.set("n", "<Esc>", function()
+		if opts.on_close then
+			opts.on_close(buf)
+		end
 		vim.api.nvim_win_close(win, true)
 	end, { buffer = buf, silent = true })
 end
@@ -144,7 +150,7 @@ end
 
 -- Floating window
 local function create_float_window(buf, opts)
-	local fill = opts.fill or 0.8
+	local fill = opts.fill or 0.6
 	local width = math.floor(vim.o.columns * fill)
 	local height = math.floor(vim.o.lines * fill)
 	local row = math.floor((vim.o.lines - height) / 2)
@@ -164,14 +170,7 @@ local function create_float_window(buf, opts)
 		footer_pos = opts.footer_pos or "center",
 	})
 
-	if opts.on_close then
-		vim.api.nvim_buf_attach(buf, false, {
-			on_detach = function()
-				opts.on_close()
-			end,
-		})
-	end
-	set_close_keys(buf, win)
+	set_close_keys(buf, win, opts)
 	return buf, win
 end
 
@@ -198,7 +197,7 @@ local function create_horizontal_window(buf, opts)
 		vim.api.nvim_set_current_win(win)
 	end
 
-	set_close_keys(buf, win)
+	set_close_keys(buf, win, opts)
 	return buf, win
 end
 

@@ -3,6 +3,7 @@ local capture = require("org_markdown.capture")
 local refile = require("org_markdown.refile")
 local config = require("org_markdown.config")
 local find = require("org_markdown.find")
+local quick_note = require("org_markdown.quick_note")
 
 local M = {}
 
@@ -75,5 +76,29 @@ function M.register()
 	-- 	desc = "OrgMarkdown: Refile to heading",
 	-- 	silent = true,
 	-- })
+	--
+	local function name_to_pascal(name)
+		return name:gsub("[%s_]+", ""):gsub("^(%l)", string.upper)
+	end
+	for name, recipe in pairs(quick_note.recipes) do
+		-- 1. Create the user command
+		if name and recipe then
+			local command_name = "OrgMarkdown" .. name_to_pascal(recipe.title)
+			vim.api.nvim_create_user_command(command_name, function()
+				quick_note.open_quick_note(name)
+			end, {
+				desc = "OrgMarkdown: " .. recipe.title,
+			})
+
+			-- 2. Bind the key if recipe.key is not empty
+			if recipe.key and recipe.key ~= "" then
+				local key = "<leader>z" .. recipe.key
+				vim.keymap.set("n", key, "<cmd>" .. command_name .. "<CR>", {
+					desc = "OrgMarkdown: " .. recipe.title,
+					silent = true,
+				})
+			end
+		end
+	end
 end
 return M

@@ -1,10 +1,21 @@
 local M = {
-	default_tags = { "todo", "inbox" },
-	capture_templates = {},
-	default_capture = "inbox",
+	capture_templates = {
+		["todo"] = {
+			template = "# TODO %? \n %u",
+			name = "Todo",
+			header = "TODO's",
+		},
+		["notes"] = {
+			template = "#  %?",
+			name = "Notes",
+			header = "Notes",
+		},
+	},
+	default_capture = "todo",
 	window_method = "float",
-	picker = "telescope", -- or "snacks"
-	refile_paths = { "~/notes", "~/projects" },
+	picker = "snacks", -- or "telescope"
+	refile_paths = { "~/notes" },
+	quick_note_file = "~/notes/quick_notes/",
 	keymaps = {
 		capture = "<leader>onn",
 		agenda = "<leader>onv",
@@ -12,6 +23,7 @@ local M = {
 		find_heading = "<leader>onh",
 		refile_to_file = "<leader>onrf",
 		refile_to_heading = "<leader>onrh",
+		open_quick_note = "<leader>z",
 	},
 }
 
