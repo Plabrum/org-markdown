@@ -36,11 +36,13 @@ end
 
 function M.open_capture_buffer(content, cursor_row, cursor_col, tpl)
 	return async.promise(function(resolve, _)
+		local filename = "Capture template: " .. tpl.name
 		local buf, win = utils.open_window({
-			method = config.window_method,
-			title = "Capture template: " .. tpl.name,
+			method = config.captures.window_method,
+			title = filename,
+			filename = filename,
 			filetype = "markdown",
-			footer = "Press <C-c><C-c> to save, <C-c><C-k> to cancel",
+			footer = "Press <C-c><C-c>, <leader><CR> to save, <C-c><C-k> to cancel",
 		})
 
 		vim.api.nvim_buf_set_lines(buf, 0, -1, false, vim.split(content, "\n"))
@@ -219,8 +221,8 @@ local key_mapping = {
 -- Prompt and capture
 function M.capture_template(name)
 	async.run(function()
-		name = name or config.default_capture
-		local tpl = config.capture_templates[name]
+		name = name or config.captures.default_template
+		local tpl = config.captures.templates[name]
 		if not tpl then
 			vim.notify("No capture template for: " .. name, vim.log.levels.ERROR)
 			return
@@ -238,10 +240,9 @@ function M.capture_template(name)
 				text = handler(text, matched_target, tpl)
 			end
 		end
-
 		if text ~= "" then
-			utils.insert_under_heading(vim.fn.expand(tpl.file), tpl.heading, vim.split(text, "\n"))
-			vim.notify("Captured to " .. tpl.file)
+			utils.insert_under_heading(vim.fn.expand(tpl.filename), tpl.heading, vim.split(text, "\n"))
+			vim.notify("Captured to " .. tpl.filename .. " under heading " .. tpl.heading)
 		end
 	end)
 end

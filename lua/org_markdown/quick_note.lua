@@ -5,13 +5,9 @@ local M = {}
 function M.git_branch_note(opts)
 	local cwd = (opts and opts.cwd) or vim.uv.cwd() or ""
 	local branch_output = vim.fn.systemlist({ "git", "-C", cwd, "branch", "--show-current" })
-	local branch = branch_output[1] or ""
+	local branch = branch_output[1] or "no-branch"
+	branch = branch:gsub("/", "__")
 
-	if branch == "" then
-		branch = "no-branch"
-	end
-
-	-- Get the last directory name from cwd
 	local folder_name = vim.fn.fnamemodify(cwd, ":t") -- ":t" gets the tail of the path
 	if folder_name == "" then
 		folder_name = "unknown"

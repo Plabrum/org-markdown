@@ -83,14 +83,16 @@ opts = {
   },
   picker = "telescope", -- or "snacks"
   window_method = "float", -- or "horizontal"
-  capture_templates = {
-    inbox = {
-      file = "~/notes/inbox.md",
-      heading = "Inbox",
-      template = "- [ ] %t %?",
+  captures = {
+    default_template = "inbox",
+    templates = {
+      inbox = {
+        file = "~/notes/inbox.md",
+        heading = "Inbox",
+        template = "- [ ] %t %?",
+      },
     },
-  },
-  default_capture = "inbox",
+  }
 }
 ```
 

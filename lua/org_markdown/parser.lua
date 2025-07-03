@@ -1,15 +1,5 @@
 local M = {}
 
---- Parses an org heading line and extracts state, priority, text, and tags.
----
---- Expected format: `# STATE [#P] text :tag1:tag2:`
----
---- @param line string The line to parse (e.g., "# TODO [#A] Finish task :urgent:")
---- @return table|nil state The task state ("TODO" or "IN_PROGRESS"), or nil if invalid
---- @return string|nil priority The priority (e.g., "#A"), or nil if not present
---- @return string|nil text The main heading text without tags or status, or nil if not matched
---- @return string[] tags A list of tag strings (e.g., {"urgent", "work"})
-
 local valid_states = {
 	TODO = true,
 	IN_PROGRESS = true,
@@ -71,6 +61,12 @@ function M.extract_tags(line)
 	return tags
 end
 
+--- Parses an org heading line and extracts state, priority, text, and tags.
+---
+--- Expected format: `# STATE [#P] text :tag1:tag2:`
+---
+--- @param line string The line to parse (e.g., "# TODO [#A] Finish task :urgent:")
+--- @return table|nil state The task state ("TODO" or "IN_PROGRESS"), or nil if invalid
 function M.parse_headline(line)
 	if not line:match("^#+%s") then
 		return nil

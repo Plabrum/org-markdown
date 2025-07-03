@@ -148,7 +148,6 @@ function M.show_calendar()
 	local buf, win = utils.open_window({
 		title = "Agenda Calendar",
 		filetype = "markdown",
-		method = "float",
 		footer = "Press q to close",
 	})
 	vim.api.nvim_buf_set_lines(buf, 0, -1, false, lines)
@@ -161,7 +160,6 @@ function M.show_tasks()
 	local buf, win = utils.open_window({
 		title = "Agenda Task",
 		filetype = "markdown",
-		method = "float",
 		footer = "Press q to close",
 	})
 	vim.api.nvim_buf_set_lines(buf, 0, -1, false, lines)
@@ -176,8 +174,9 @@ function M.show_combined()
 	-- Open window first to get its actual width
 	local buf, win = utils.open_window({
 		title = "Agenda",
+		filename = "Agenda",
+		method = config.agendas.window_method,
 		filetype = "markdown",
-		method = "float",
 		footer = "Press q to close",
 	})
 

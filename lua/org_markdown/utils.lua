@@ -1,5 +1,6 @@
 local config = require("org_markdown.config")
 local async = require("org_markdown.async")
+local editing = require("org_markdown.editing")
 
 local M = {}
 
@@ -83,30 +84,82 @@ end
 local function create_buffer(opts)
 	local buf = vim.api.nvim_create_buf(false, true)
 	vim.bo[buf].filetype = opts.filetype or "markdown"
-	vim.bo[buf].buftype = "acwrite"
-	vim.bo[buf].bufhidden = "wipe"
+	vim.bo[buf].buftype = opts.buftype or "acwrite"
+	vim.bo[buf].bufhidden = opts.bufhidden or "wipe"
+	vim.bo[buf].modifiable = true
+	vim.bo[buf].swapfile = false
+	if opts.name then
+		vim.api.nvim_buf_set_name(buf, opts.name)
+	else
+		vim.api.nvim_buf_set_name(buf, "org-markdown")
+	end
+
+	editing.setup_editing_keybinds(buf)
 	return buf
 end
 
--- set close keymaps
-local function set_close_keys(buf, win, opts)
-	vim.keymap.set("n", "q", function()
-		if opts.on_close then
-			opts.on_close(buf)
-		end
-		if not opts.preseve_window then
-			vim.api.nvim_win_close(win, true)
-		end
-	end, { buffer = buf, silent = true })
+local function get_active_windows()
+	local active = {}
+	for _, win in ipairs(vim.api.nvim_list_wins()) do
+		local buf = vim.api.nvim_win_get_buf(win)
+		local cfg = vim.api.nvim_win_get_config(win)
 
-	vim.keymap.set("n", "<Esc>", function()
+		if cfg.relative == "" then
+			local name = vim.api.nvim_buf_get_name(buf)
+			local ft = vim.api.nvim_get_option_value("filetype", { buf = buf })
+			local bt = vim.api.nvim_get_option_value("buftype", { buf = buf })
+
+			if name ~= "" and ft ~= "" and bt == "" then
+				table.insert(active, win)
+			end
+		end
+	end
+	return active
+end
+
+local function set_close_keys(buf, win, opts)
+	local function try_close()
 		if opts.on_close then
 			opts.on_close(buf)
 		end
-		if not opts.preseve_window then
-			vim.api.nvim_win_close(win, true)
+
+		if opts.persist_window then
+			if opts._previous_buf and vim.api.nvim_buf_is_valid(opts._previous_buf) then
+				vim.bo[buf].modified = false
+				vim.api.nvim_win_set_buf(win, opts._previous_buf)
+			end
+		else
+			if vim.api.nvim_win_is_valid(win) then
+				vim.api.nvim_win_close(win, true)
+			end
 		end
-	end, { buffer = buf, silent = true })
+
+		if vim.api.nvim_buf_is_valid(buf) and #vim.fn.win_findbuf(buf) == 0 then
+			vim.api.nvim_buf_delete(buf, { force = true })
+		end
+	end
+
+	vim.keymap.set("n", "q", try_close, { buffer = buf, silent = true })
+	vim.keymap.set("n", "<Esc>", try_close, { buffer = buf, silent = true })
+	--
+	-- vim.api.nvim_create_autocmd({ "BufLeave", "WinLeave" }, {
+	-- 	buffer = buf,
+	-- 	callback = try_close,
+	-- })
+	--
+	vim.api.nvim_create_autocmd("BufWriteCmd", {
+		buffer = buf,
+		callback = function()
+			if opts.on_close then
+				opts.on_close(buf)
+			end
+			vim.bo[buf].modified = false
+		end,
+	})
+
+	vim.api.nvim_create_autocmd("VimLeavePre", {
+		callback = try_close,
+	})
 end
 
 -- inline prompt window
@@ -205,7 +258,7 @@ local function create_horizontal_window(buf, opts)
 	return buf, win
 end
 
-local function create_vertical_window(buf, opts)
+local function create_vsplit(buf, opts)
 	vim.cmd("vsplit")
 	local win = vim.api.nvim_get_current_win()
 	vim.api.nvim_win_set_buf(win, buf)
@@ -231,54 +284,45 @@ local function create_vertical_window(buf, opts)
 	return buf, win
 end
 
-local function open_in_next_window(buf)
-	local current_tab = vim.api.nvim_get_current_tabpage()
-	local current_win = vim.api.nvim_get_current_win()
+local function create_vertical_window(buf, opts)
+	opts = opts or {}
+	opts._previous_buf = vim.api.nvim_get_current_buf()
 
-	-- Get only normal (non-floating) windows
-	local all_wins = vim.api.nvim_tabpage_list_wins(current_tab)
-	local wins = {}
+	local win
 
-	for _, win in ipairs(all_wins) do
-		local cfg = vim.api.nvim_win_get_config(win)
-		if cfg.relative == "" then
-			table.insert(wins, win)
-		end
-	end
+	if vim.o.columns > 120 then
+		local windows = get_active_windows()
 
-	if #wins == 1 then
-		vim.cmd("vsplit")
-		local new_win = vim.api.nvim_get_current_win()
-		vim.api.nvim_win_set_buf(new_win, buf)
-		return buf, new_win
-	else
-		-- Find index of current normal window
-		local index = nil
-		for i, win in ipairs(wins) do
-			if win == current_win then
-				index = i
-				break
+		if windows[2] then
+			-- Use the second active code window
+			win = windows[2]
+		else
+			-- Otherwise, create a vertical split and grab the new window
+			local before = get_active_windows()
+			vim.cmd("vsplit")
+			opts.persist_window = true
+			local after = get_active_windows()
+
+			for _, w in ipairs(after) do
+				if not vim.tbl_contains(before, w) then
+					win = w
+					break
+				end
+			end
+
+			-- fallback in case we can't detect the new window
+			if not win then
+				win = vim.api.nvim_get_current_win()
+				opts.persist_window = true
 			end
 		end
 
-		-- Fallback in case current_win was not found
-		if not index then
-			vim.api.nvim_win_set_buf(wins[1], buf)
-			return buf, wins[1]
-		end
-
-		local next_index = (index % #wins) + 1
-		local next_win = wins[next_index]
-		vim.api.nvim_set_current_win(next_win)
-		vim.api.nvim_win_set_buf(next_win, buf)
-		return buf, next_win
+		vim.api.nvim_win_set_buf(win, buf)
+	else
+		win = vim.api.nvim_get_current_win()
+		vim.api.nvim_win_set_buf(win, buf)
+		opts.persist_window = true
 	end
-end
-
-local function create_window_in_place(buf, opts)
-	opts = opts or {}
-
-	local _, win = open_in_next_window(buf)
 
 	if opts.title then
 		vim.api.nvim_buf_set_lines(buf, 0, 0, false, {
@@ -296,14 +340,13 @@ local function create_window_in_place(buf, opts)
 		vim.api.nvim_set_current_win(win)
 	end
 
-	-- Spread `opts` and inject `preserve_window = true` non-destructively
-	set_close_keys(buf, win, vim.tbl_extend("force", opts, { preserve_window = true }))
+	set_close_keys(buf, win, opts)
 	return buf, win
 end
 
 -- Public API
 function M.open_window(opts)
-	local method = opts.method or "float"
+	local method = opts.method or config.window_method
 	local buf = create_buffer(opts)
 
 	if method == "float" then
@@ -312,10 +355,10 @@ function M.open_window(opts)
 		return create_horizontal_window(buf, opts)
 	elseif method == "inline_prompt" then
 		return create_inline_prompt_window(buf, opts)
+	elseif method == "vsplit" then
+		return create_vsplit(buf, opts)
 	elseif method == "vertical" then
 		return create_vertical_window(buf, opts)
-	elseif method == "next_vertical" then
-		return create_window_in_place(buf, opts)
 	else
 		error("Unknown window method: " .. method)
 	end
