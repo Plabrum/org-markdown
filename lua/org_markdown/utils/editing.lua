@@ -1,42 +1,46 @@
 local config = require("org_markdown.config")
 local M = {}
 
-function M.cycle_checkbox()
-	vim.notify("Cycle checkbox state", vim.log.levels.INFO)
-	local line_num = vim.fn.line(".") - 1
-	local line = vim.api.nvim_buf_get_lines(0, line_num, line_num + 1, false)[1]
-	if not line then
-		return
-	end
-
-	local pattern = "%- %[(.-)%]"
+function M.cycle_checkbox_in_line(line, states)
+	local pattern = "%- %[(.)%]"
 	local current = line:match(pattern)
+
+	-- early return if no checkbox found
 	if not current then
-		return
+		return nil
 	end
 
-	current = vim.trim(current)
-	local states = config.checkbox_states
-	local index = nil
-
+	local index
 	for i, state in ipairs(states) do
-		if state == current then
+		if state == current then -- compare raw
 			index = i
 			break
 		end
 	end
 
 	if not index then
-		return
+		return nil
 	end
 
 	local next_state = states[(index % #states) + 1]
-	local new_line = line:gsub("%- %[(.-)%]", "- [" .. next_state .. "]", 1)
-	vim.api.nvim_buf_set_lines(0, line_num, line_num + 1, false, { new_line })
+	return line:gsub(pattern, "- [" .. next_state .. "]", 1)
+end
+
+function M.edit_line_at_cursor(modifier_fn)
+	local row = vim.fn.line(".") - 1
+	local line = vim.api.nvim_buf_get_lines(0, row, row + 1, false)[1]
+	local new_line = modifier_fn(line)
+	if new_line and new_line ~= line then
+		vim.api.nvim_buf_set_lines(0, row, row + 1, false, { new_line })
+	end
 end
 
 function M.setup_editing_keybinds(bufnr)
-	vim.keymap.set("n", "<CR>", M.cycle_checkbox, {
+	vim.keymap.set("n", "<CR>", function()
+		M.edit_line_at_cursor(function(line)
+			return M.cycle_checkbox_in_line(line, config.checkbox_states)
+		end)
+	end, {
 		desc = "Cycle checkbox state",
 		buffer = bufnr,
 	})
