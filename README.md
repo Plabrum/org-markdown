@@ -1,30 +1,15 @@
 # Org_markdown
 
-Org_markdown is a Neovim plugin that brings powerful Org-mode-style task and agenda management to Markdown files. Inspired by nvim-orgmode, it allows you to manage your tasks, schedule items, and refile entries within your Markdown notes using a clean Lua implementation.
+Org markdown gives org mode features to markdown files in Neovim.
 
 ### Features
-	•	📅 Agenda view for scheduled tasks using <YYYY-MM-DD>
-	•	✅ Task management for TODO and IN_PROGRESS headings
-	•	🔼 Priority-aware task sorting ([#A], [#B], etc.)
-	•	🗂 Refile entries to other headings or files
-	•	📝 Flexible capture templates with floating editor support
-	•	🔍 Picker support via telescope.nvim or snacks.nvim
-	•	🔧 Fully configurable with lazy-loading and custom keymaps
-
-
-### Screenshots
-
-Agenda View (Combined Tasks + Calendar)
-
-Screenshot here
-
-Capture Window
-
-Screenshot here
-
-Refile Picker
-
-Screenshot here
+  * Agenda view for scheduled tasks using <YYYY-MM-DD>
+  * Task management for TODO and IN_PROGRESS headings
+  *  Priority-aware task sorting ([#A], [#B], etc.)
+  *  Refile entries to other headings or files
+  *  Flexible capture templates with floating editor support
+  *  Picker support via telescope.nvim or snacks.nvim
+  *  Fully configurable with lazy-loading and custom keymaps
 
 
 ### Getting Started
@@ -104,8 +89,3 @@ opts = {
   - Archive support
 
 
-📄 License
-
-MIT
-
-Made with ❤️ by @phil

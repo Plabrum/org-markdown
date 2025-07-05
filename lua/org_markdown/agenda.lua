@@ -1,9 +1,9 @@
 -- org_markdown/agenda/calendar.lua + tasks.lua
 local config = require("org_markdown.config")
-local utils = require("org_markdown.utils")
-local parser = require("org_markdown.parser")
+local utils = require("org_markdown.utils.utils")
+local parser = require("org_markdown.utils.parser")
 local formatter = require("org_markdown.utils.formatter")
-local queries = require("org_markdown.queries")
+local queries = require("org_markdown.utils.queries")
 
 local M = {}
 vim.api.nvim_set_hl(0, "OrgTodo", { fg = "#ff5f5f", bold = true })

@@ -87,8 +87,8 @@ local function create_buffer(opts)
 	vim.bo[buf].bufhidden = opts.bufhidden or "wipe"
 	vim.bo[buf].modifiable = true
 	vim.bo[buf].swapfile = false
-	if opts.name then
-		vim.api.nvim_buf_set_name(buf, opts.name)
+	if opts.title then
+		vim.api.nvim_buf_set_name(buf, opts.title)
 	else
 		vim.api.nvim_buf_set_name(buf, "org-markdown")
 	end
@@ -292,14 +292,14 @@ local function create_vertical_window(buf, opts)
 	if vim.o.columns > 120 then
 		local windows = get_active_windows()
 
-		if windows[2] then
-			-- Use the second active code window
-			win = windows[2]
+		if #windows > 1 then
+			-- Use the last active code window
+			win = windows[#windows]
+			opts.persist_window = true
 		else
 			-- Otherwise, create a vertical split and grab the new window
 			local before = get_active_windows()
 			vim.cmd("vsplit")
-			opts.persist_window = true
 			local after = get_active_windows()
 
 			for _, w in ipairs(after) do
@@ -308,16 +308,11 @@ local function create_vertical_window(buf, opts)
 					break
 				end
 			end
-
-			-- fallback in case we can't detect the new window
-			if not win then
-				win = vim.api.nvim_get_current_win()
-				opts.persist_window = true
-			end
 		end
 
 		vim.api.nvim_win_set_buf(win, buf)
 	else
+		-- small window, so we utilize the current window
 		win = vim.api.nvim_get_current_win()
 		vim.api.nvim_win_set_buf(win, buf)
 		opts.persist_window = true

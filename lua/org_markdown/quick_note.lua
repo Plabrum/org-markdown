@@ -1,4 +1,4 @@
-local utils = require("org_markdown.utils")
+local utils = require("org_markdown.utils.utils")
 local config = require("org_markdown.config")
 local M = {}
 

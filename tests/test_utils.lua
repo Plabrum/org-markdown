@@ -1,5 +1,5 @@
 local MiniTest = require("mini.test")
-local utils = require("org_markdown.utils")
+local utils = require("org_markdown.utils.utils")
 local T = MiniTest.new_set()
 
 T["adjust_heading_levels - promotes headings correctly"] = function()

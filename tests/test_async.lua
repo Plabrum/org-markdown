@@ -1,7 +1,7 @@
 local MiniTest = require("mini.test")
 local T = MiniTest.new_set()
 
-local async = require("org_markdown.async")
+local async = require("org_markdown.utils.async")
 
 -- A fake async function that resolves after a short delay
 local function fake_callback(value, cb)

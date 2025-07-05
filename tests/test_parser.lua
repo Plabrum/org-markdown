@@ -1,7 +1,7 @@
 local MiniTest = require("mini.test")
 local T = MiniTest.new_set()
 
-local parser = require("org_markdown.parser")
+local parser = require("org_markdown.utils.parser")
 
 -- Heading Parsing
 T["parse_heading - TODO with priority and tags"] = function()

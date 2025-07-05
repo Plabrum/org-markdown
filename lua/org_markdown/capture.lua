@@ -1,7 +1,7 @@
 local config = require("org_markdown.config")
-local utils = require("org_markdown.utils")
-local parser = require("org_markdown.parser")
-local async = require("org_markdown.async")
+local utils = require("org_markdown.utils.utils")
+local parser = require("org_markdown.utils.parser")
+local async = require("org_markdown.utils.async")
 
 local M = {}
 
