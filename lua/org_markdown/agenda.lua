@@ -2,7 +2,7 @@
 local config = require("org_markdown.config")
 local utils = require("org_markdown.utils")
 local parser = require("org_markdown.parser")
-local formatter = require("org_markdown.formatter")
+local formatter = require("org_markdown.utils.formatter")
 local queries = require("org_markdown.queries")
 
 local M = {}

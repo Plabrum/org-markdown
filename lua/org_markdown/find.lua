@@ -1,6 +1,6 @@
-local async = require("org_markdown.async")
-local queries = require("org_markdown.queries")
-local picker = require("org_markdown.picker")
+local async = require("org_markdown.utils.async")
+local queries = require("org_markdown.utils.queries")
+local picker = require("org_markdown.utils.picker")
 local utils = require("org_markdown.utils")
 
 local M = {}

@@ -1,6 +1,6 @@
 local config = require("org_markdown.config")
-local async = require("org_markdown.async")
-local editing = require("org_markdown.editing")
+local async = require("org_markdown.utils.async")
+local editing = require("org_markdown.utils.editing")
 
 local M = {}
 
@@ -80,7 +80,6 @@ function M.set_cursor(win, row, col, mode)
 	end
 end
 
--- Shared: create reusable buffer
 local function create_buffer(opts)
 	local buf = vim.api.nvim_create_buf(false, true)
 	vim.bo[buf].filetype = opts.filetype or "markdown"
