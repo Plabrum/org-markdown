@@ -27,19 +27,21 @@ function M.cycle_checkbox_in_line(line, states)
 end
 
 function M.continue_todo(line)
-	local pattern = "%- %[.%](.*)"
-	local current = line:match(pattern)
+	local pattern = "(%s*)%- %[.%](.*)"
+	local current = {line:match(pattern)}
 
 	-- early return if no checkbox found
-	if not current then
+	if #current == 0 then
 		return nil
 	end
 
-    if current == "" or current == " " then
+    local spaces, contents = unpack(current)
+
+    if contents == "" or contents == " " then
         return { "" }
     end
 
-    return { line, "- [ ] " }
+    return { line, spaces .. "- [ ] " }
 end
 
 function M.edit_line_at_cursor(modifier_fn, update_cursor)
