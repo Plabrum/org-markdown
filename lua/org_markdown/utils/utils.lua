@@ -117,9 +117,9 @@ local function get_active_windows()
 end
 
 local function set_close_keys(buf, win, opts)
-	local function try_close()
+	local function try_close(close_key)
 		if opts.on_close then
-			opts.on_close(buf)
+			opts.on_close(buf, win, close_key)
 		end
 
 		if opts.persist_window then
@@ -138,8 +138,12 @@ local function set_close_keys(buf, win, opts)
 		end
 	end
 
-	vim.keymap.set("n", "q", try_close, { buffer = buf, silent = true })
-	vim.keymap.set("n", "<Esc>", try_close, { buffer = buf, silent = true })
+	vim.keymap.set("n", "q", function()
+		try_close("q")
+	end, { buffer = buf, silent = true })
+	vim.keymap.set("n", "<Esc>", function()
+		try_close("<Esc>")
+	end, { buffer = buf, silent = true })
 	--
 	-- vim.api.nvim_create_autocmd({ "BufLeave", "WinLeave" }, {
 	-- 	buffer = buf,

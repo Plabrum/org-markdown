@@ -37,6 +37,11 @@ local M = {
 		"-",
 		"X",
 	},
+	status_states = {
+		"TODO",
+		"IN_PROGRESS",
+		"DONE",
+	},
 
 	-- TODO PAL: Implement front matter automations
 	-- automation = {

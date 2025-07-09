@@ -34,8 +34,15 @@ function M.capture_template_find(template, marker)
 	return utils.byte_index_to_row_col(template, s)
 end
 
-function M.open_capture_buffer(content, cursor_row, cursor_col, tpl)
+function M.open_capture_buffer_async(content, cursor_row, cursor_col, tpl)
 	return async.promise(function(resolve, _)
+		-- Submit buffer
+		local function submit_buffer(buf)
+			local lines = vim.api.nvim_buf_get_lines(buf, 0, -1, false)
+			local trimmed_lines = utils.trim_trailing_whitespace(lines)
+			return table.concat(trimmed_lines, "\n")
+		end
+
 		local filename = "Capture template: " .. tpl.name
 		local buf, win = utils.open_window({
 			method = config.captures.window_method,
@@ -43,21 +50,29 @@ function M.open_capture_buffer(content, cursor_row, cursor_col, tpl)
 			filename = filename,
 			filetype = "markdown",
 			footer = "Press <C-c><C-c>, <leader><CR> to save, <C-c><C-k> to cancel",
+			on_close = function(buf, win, close_key)
+				if close_key == "q" then
+					resolve("")
+				else
+					resolve(submit_buffer(buf))
+				end
+			end,
 		})
 
 		vim.api.nvim_buf_set_lines(buf, 0, -1, false, vim.split(content, "\n"))
 		utils.set_cursor(win, cursor_row, cursor_col, "i")
 
-		-- Submit buffer
-		local function submit_buffer()
-			local lines = vim.api.nvim_buf_get_lines(buf, 0, -1, false)
-			local trimmed_lines = utils.trim_trailing_whitespace(lines)
-			local joined = table.concat(trimmed_lines, "\n")
+		-- TODO PAL: Refactor open_window so it can take, close_key and quit_keys and a callback for on_close and on_quit
+		vim.keymap.set("n", "<C-c><C-c>", function()
+			local joined = submit_buffer(buf)
 			vim.api.nvim_win_close(win, true)
 			resolve(joined)
-		end
-		vim.keymap.set("n", "<C-c><C-c>", submit_buffer, { buffer = buf })
-		vim.keymap.set("n", "<leader><CR>", submit_buffer, { buffer = buf })
+		end, { buffer = buf })
+		vim.keymap.set("n", "<leader><CR>", function()
+			local joined = submit_buffer(buf)
+			vim.api.nvim_win_close(win, true)
+			resolve(joined)
+		end, { buffer = buf })
 
 		-- Jump to next %?
 		vim.keymap.set("n", "<Tab>", function()
@@ -210,7 +225,7 @@ local key_mapping = {
 			local row, col = M.capture_template_find(text, matched_target)
 			local cleaned = M.capture_template_substitute(text, matched_target, "", 1)
 			if row and col then
-				local buffer_result = M.open_capture_buffer(cleaned, row, col, tpl):await()
+				local buffer_result = M.open_capture_buffer_async(cleaned, row, col, tpl):await()
 				return buffer_result
 			else
 				return text

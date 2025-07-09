@@ -30,10 +30,10 @@ local function is_buffer_empty(lines)
 	return true
 end
 
-function M.open_quick_note(recipe_name)
-	local recipe = M.recipes[recipe_name]
+function M.open_quick_note(recipe_key)
+	local recipe = M.recipes[recipe_key]
 	if not recipe then
-		vim.notify("Quicknote recipe not found: " .. recipe_name, vim.log.levels.ERROR)
+		vim.notify("Quicknote recipe not found: " .. recipe.title, vim.log.levels.ERROR)
 		return
 	end
 
@@ -52,7 +52,7 @@ function M.open_quick_note(recipe_name)
 	end
 	local buf, win = utils.open_window({
 		method = config.window_method,
-		title = "Quick Note: " .. recipe_name,
+		title = "Quick Note: " .. recipe.title,
 		filetype = "markdown",
 		footer = "Press q or <Esc> to save",
 		on_close = function(buf_num)
@@ -68,7 +68,7 @@ function M.open_quick_note(recipe_name)
 
 	local lines = content ~= "" and vim.split(content, "\n") or { "" }
 	vim.api.nvim_buf_set_lines(buf, 0, -1, false, lines)
-	utils.set_cursor(win, 0, 0, "i")
+	utils.set_cursor(win, 0, 0, "n")
 end
 
 M.recipes = {
