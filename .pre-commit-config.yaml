@@ -1,0 +1,10 @@
+repos:
+  - repo: local
+    hooks:
+      - id: stylua
+        name: Stylua Formatter
+        entry: stylua
+        language: system
+        types: [lua]
+        args: [--check]
+        files: ^lua/
