@@ -71,9 +71,7 @@ function M.setup_editing_keybinds(bufnr)
 	})
 
 	vim.keymap.set("i", "<CR>", function()
-		local edited = M.edit_line_at_cursor(function(line)
-			return M.continue_todo(line)
-		end, true)
+		local edited = M.edit_line_at_cursor(M.continue_todo, true)
 
         if not edited then
             vim.api.nvim_feedkeys(vim.api.nvim_replace_termcodes("<CR>", true, false, true), "n", false)
