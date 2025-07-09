@@ -1,6 +1,5 @@
 local config = require("org_markdown.config")
-local async = require("org_markdown.async")
-local snacks = require("snacks")
+local async = require("org_markdown.utils.async")
 
 local M = {}
 
@@ -20,6 +19,7 @@ function M.pick(items, opts)
 end
 
 function M._pick_snacks(items, opts)
+	local snacks = require("snacks")
 	snacks.picker.pick({
 		source = opts.kind or "item",
 		prompt = opts.prompt or "Select item",

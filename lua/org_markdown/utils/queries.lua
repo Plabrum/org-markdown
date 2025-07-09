@@ -1,4 +1,4 @@
-local async = require("org_markdown.async")
+local async = require("org_markdown.utils.async")
 local config = require("org_markdown.config")
 
 local M = {}

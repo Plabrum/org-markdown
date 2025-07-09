@@ -51,10 +51,18 @@ local M = {
 	-- },
 }
 
-function M.setup(user_config)
-	for k, v in pairs(user_config or {}) do
-		M[k] = v
+local function merge_tables(default, user)
+	for k, v in pairs(user) do
+		if type(v) == "table" and type(default[k]) == "table" then
+			merge_tables(default[k], v)
+		else
+			default[k] = v
+		end
 	end
+end
+
+function M.setup(user_config)
+    merge_tables(M, user_config or {})
 end
 
 return M

@@ -92,7 +92,7 @@ function M.register()
 
 			-- 2. Bind the key if recipe.key is not empty
 			if recipe.key and recipe.key ~= "" then
-				local key = "<leader>z" .. recipe.key
+				local key = keymaps.open_quick_note .. recipe.key
 				vim.keymap.set("n", key, "<cmd>" .. command_name .. "<CR>", {
 					desc = "OrgMarkdown: " .. recipe.title,
 					silent = true,
