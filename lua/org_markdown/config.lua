@@ -67,7 +67,7 @@ local function merge_tables(default, user)
 end
 
 function M.setup(user_config)
-    merge_tables(M, user_config or {})
+	merge_tables(M, user_config or {})
 end
 
 return M
