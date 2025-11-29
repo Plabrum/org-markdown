@@ -5,6 +5,7 @@ local config = require("org_markdown.config")
 local find = require("org_markdown.find")
 local editing = require("org_markdown.utils.editing")
 local quick_note = require("org_markdown.quick_note")
+local syntax = require("org_markdown.syntax")
 
 local M = {}
 
@@ -83,6 +84,7 @@ function M.register()
 			-- Only activate when you want (e.g., not in help buffers, etc.)
 			-- if vim.bo[args.buf].buftype ~= "" then return end
 			editing.setup_editing_keybinds(args.buf)
+			syntax.setup_buffer_syntax(args.buf)
 		end,
 	})
 	-- vim.keymap.set("n", keymaps.refile_to_heading, "<cmd>MarkdownRefileHeading<CR>", {
