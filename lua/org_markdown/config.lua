@@ -48,7 +48,6 @@ local M = {
 			enabled = true,
 			views = { "tasks", "calendar" },
 		},
-		register_view_commands = true,
 	},
 	window_method = "vertical",
 	picker = "snacks", -- or "telescope"

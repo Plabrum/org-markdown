@@ -65,20 +65,6 @@ T["config validation - custom view override"] = function()
 	MiniTest.expect.equality(config.agendas.views.calendar.filters.date_range.days, 14)
 end
 
-T["show_view - function exists"] = function()
-	MiniTest.expect.equality(type(agenda.show_view), "function")
-end
-
-T["show_tasks - delegates to show_view"] = function()
-	-- Just verify the function exists and is callable
-	MiniTest.expect.equality(type(agenda.show_tasks), "function")
-end
-
-T["show_calendar - delegates to show_view"] = function()
-	-- Just verify the function exists and is callable
-	MiniTest.expect.equality(type(agenda.show_calendar), "function")
-end
-
 T["show_tabbed_agenda - function exists"] = function()
 	MiniTest.expect.equality(type(agenda.show_tabbed_agenda), "function")
 end
@@ -179,14 +165,12 @@ T["config validation - all group_by options valid"] = function()
 	end
 end
 
--- Test backwards compatibility
-T["backwards compatibility - old commands still work"] = function()
+-- Test that tabbed agenda still works
+T["tabbed agenda - function exists"] = function()
 	-- Reset config
 	config.setup({})
 
-	-- Verify old view functions exist
-	MiniTest.expect.equality(type(agenda.show_tasks), "function")
-	MiniTest.expect.equality(type(agenda.show_calendar), "function")
+	-- Verify tabbed agenda function exists
 	MiniTest.expect.equality(type(agenda.show_tabbed_agenda), "function")
 end
 

@@ -36,30 +36,9 @@ function M.register()
 	-- 	desc = "OrgMarkdown: Refile to Heading",
 	-- })
 
-	vim.api.nvim_create_user_command("MarkdownAgendaCalendar", agenda.show_calendar, {
-		desc = "OrgMarkdown: Agenda Calendar View",
-	})
-
-	vim.api.nvim_create_user_command("MarkdownAgendaTasks", agenda.show_tasks, {
-		desc = "OrgMarkdown: Agenda Task View",
-	})
-
 	vim.api.nvim_create_user_command("MarkdownAgenda", agenda.show_tabbed_agenda, {
-		desc = "OrgMarkdown: Agenda Tabbed View",
+		desc = "OrgMarkdown: Agenda",
 	})
-
-	-- Auto-register view commands
-	if config.agendas.register_view_commands ~= false then
-		for view_id, view_def in pairs(config.agendas.views or {}) do
-			local cmd_name = "MarkdownAgenda" .. name_to_pascal(view_id)
-
-			vim.api.nvim_create_user_command(cmd_name, function()
-				agenda.show_view(view_id)
-			end, {
-				desc = "OrgMarkdown: " .. (view_def.title or view_id),
-			})
-		end
-	end
 
 	vim.api.nvim_create_user_command("MarkdownFindFile", find.open_file_picker, {
 		desc = "OrgMarkdown: Open Markdown File",

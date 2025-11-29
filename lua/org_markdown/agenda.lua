@@ -590,14 +590,6 @@ refresh_tab_content = function(buf, win, tab_index, view_id)
 	end
 end
 
-function M.show_calendar()
-	M.show_view("calendar")
-end
-
-function M.show_tasks()
-	M.show_view("tasks")
-end
-
 function M.show_tabbed_agenda()
 	-- Dynamic fill based on screen width
 	local fill_width = vim.o.columns > 120 and 0.7 or 0.9

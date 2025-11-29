@@ -23,7 +23,8 @@ function M.cycle_checkbox_inline(line, states)
 	end
 
 	local next_state = states[(index % #states) + 1]
-	return { (line:gsub(pattern, "- [" .. next_state .. "]", 1)) }
+	local new_line = line:gsub(pattern, "- [" .. next_state .. "]", 1)
+	return { new_line }
 end
 
 function M.cycle_status_inline(line, states)
