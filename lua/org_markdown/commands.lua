@@ -8,6 +8,14 @@ local quick_note = require("org_markdown.quick_note")
 
 local M = {}
 
+-- Helper function to convert names to PascalCase
+local function name_to_pascal(name)
+	-- Convert names like "urgent_work" or "urgent-work" to "UrgentWork"
+	return name:gsub("[%s_%-]+(%w)", function(c)
+		return c:upper()
+	end):gsub("^(%l)", string.upper)
+end
+
 function M.register()
 	vim.api.nvim_create_user_command("MarkdownCapture", function(opts)
 		capture.capture_template(opts.args ~= "" and opts.args or nil)
@@ -37,6 +45,19 @@ function M.register()
 	vim.api.nvim_create_user_command("MarkdownAgenda", agenda.show_tabbed_agenda, {
 		desc = "OrgMarkdown: Agenda Tabbed View",
 	})
+
+	-- Auto-register view commands
+	if config.agendas.register_view_commands ~= false then
+		for view_id, view_def in pairs(config.agendas.views or {}) do
+			local cmd_name = "MarkdownAgenda" .. name_to_pascal(view_id)
+
+			vim.api.nvim_create_user_command(cmd_name, function()
+				agenda.show_view(view_id)
+			end, {
+				desc = "OrgMarkdown: " .. (view_def.title or view_id),
+			})
+		end
+	end
 
 	vim.api.nvim_create_user_command("MarkdownFindFile", find.open_file_picker, {
 		desc = "OrgMarkdown: Open Markdown File",
@@ -87,10 +108,7 @@ function M.register()
 	-- 	desc = "OrgMarkdown: Refile to heading",
 	-- 	silent = true,
 	-- })
-	--
-	local function name_to_pascal(name)
-		return name:gsub("[%s_]+", ""):gsub("^(%l)", string.upper)
-	end
+
 	for name, recipe in pairs(quick_note.recipes) do
 		-- 1. Create the user command
 		if name and recipe then

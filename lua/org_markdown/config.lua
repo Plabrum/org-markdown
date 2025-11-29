@@ -17,6 +17,38 @@ local M = {
 	},
 	agendas = {
 		window_method = "float",
+		views = {
+			tasks = {
+				title = "Tasks (by priority)",
+				source = "tasks",
+				filters = {},
+				sort = {
+					by = "priority",
+					order = "asc",
+					priority_rank = { A = 1, B = 2, C = 3, Z = 99 },
+				},
+				group_by = nil,
+				display = { format = "default" },
+			},
+			calendar = {
+				title = "Calendar (next 7 days)",
+				source = "calendar",
+				filters = {
+					date_range = { days = 7, offset = 0 },
+				},
+				sort = {
+					by = "date",
+					order = "asc",
+				},
+				group_by = "date",
+				display = { format = "default" },
+			},
+		},
+		tabbed_view = {
+			enabled = true,
+			views = { "tasks", "calendar" },
+		},
+		register_view_commands = true,
 	},
 	window_method = "vertical",
 	picker = "snacks", -- or "telescope"
@@ -74,8 +106,48 @@ local function merge_tables(default, user)
 	end
 end
 
+local function validate_view(view_id, view_def)
+	local warnings = {}
+
+	if view_def.source and not vim.tbl_contains({ "tasks", "calendar", "all" }, view_def.source) then
+		table.insert(warnings, "Invalid source: " .. view_def.source)
+	end
+
+	if view_def.sort and view_def.sort.by then
+		if not vim.tbl_contains({ "priority", "date", "state", "title", "file" }, view_def.sort.by) then
+			table.insert(warnings, "Invalid sort.by: " .. view_def.sort.by)
+		end
+	end
+
+	if view_def.group_by then
+		if not vim.tbl_contains({ "date", "priority", "state", "file", "tags" }, view_def.group_by) then
+			table.insert(warnings, "Invalid group_by: " .. view_def.group_by)
+		end
+	end
+
+	if view_def.display and view_def.display.format then
+		if not vim.tbl_contains({ "default", "compact", "detailed" }, view_def.display.format) then
+			table.insert(warnings, "Invalid display.format: " .. view_def.display.format)
+		end
+	end
+
+	if #warnings > 0 then
+		vim.notify(
+			string.format("View '%s' warnings:\n%s", view_id, table.concat(warnings, "\n")),
+			vim.log.levels.WARN
+		)
+	end
+end
+
 function M.setup(user_config)
 	merge_tables(M, user_config or {})
+
+	-- Validate views after merging
+	if M.agendas and M.agendas.views then
+		for view_id, view_def in pairs(M.agendas.views) do
+			validate_view(view_id, view_def)
+		end
+	end
 end
 
 return M
