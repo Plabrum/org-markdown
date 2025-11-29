@@ -183,7 +183,9 @@ T["sync manager - reject plugin without name"] = function()
 	local sync_manager = require("org_markdown.sync.manager")
 
 	local invalid_plugin = {
-		sync = function() return { events = {} } end,
+		sync = function()
+			return { events = {} }
+		end,
 	}
 
 	local success = sync_manager.register_plugin(invalid_plugin)

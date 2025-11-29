@@ -15,7 +15,7 @@ T["config validation - valid view config"] = function()
 					filters = { states = { "TODO" } },
 					sort = { by = "priority", order = "asc" },
 					group_by = "state",
-					display = { format = "default" },
+					display = { format = "blocks" },
 				},
 			},
 		},
@@ -32,9 +32,11 @@ T["config validation - default views exist"] = function()
 
 	-- Check default views are present
 	MiniTest.expect.no_equality(config.agendas.views.tasks, nil)
-	MiniTest.expect.no_equality(config.agendas.views.calendar, nil)
+	MiniTest.expect.no_equality(config.agendas.views.calendar_blocks, nil)
+	MiniTest.expect.no_equality(config.agendas.views.calendar_compact, nil)
 	MiniTest.expect.equality(config.agendas.views.tasks.source, "tasks")
-	MiniTest.expect.equality(config.agendas.views.calendar.source, "calendar")
+	MiniTest.expect.equality(config.agendas.views.calendar_blocks.source, "calendar")
+	MiniTest.expect.equality(config.agendas.views.calendar_compact.source, "calendar")
 end
 
 T["config validation - tabbed view defaults"] = function()
@@ -42,14 +44,15 @@ T["config validation - tabbed view defaults"] = function()
 
 	MiniTest.expect.equality(config.agendas.tabbed_view.enabled, true)
 	MiniTest.expect.equality(config.agendas.tabbed_view.views[1], "tasks")
-	MiniTest.expect.equality(config.agendas.tabbed_view.views[2], "calendar")
+	MiniTest.expect.equality(config.agendas.tabbed_view.views[2], "calendar_blocks")
+	MiniTest.expect.equality(config.agendas.tabbed_view.views[3], "calendar_compact")
 end
 
 T["config validation - custom view override"] = function()
 	local test_config = {
 		agendas = {
 			views = {
-				calendar = {
+				calendar_compact = {
 					title = "Next 14 Days",
 					source = "calendar",
 					filters = { date_range = { days = 14 } },
@@ -61,8 +64,8 @@ T["config validation - custom view override"] = function()
 	}
 
 	config.setup(test_config)
-	MiniTest.expect.equality(config.agendas.views.calendar.title, "Next 14 Days")
-	MiniTest.expect.equality(config.agendas.views.calendar.filters.date_range.days, 14)
+	MiniTest.expect.equality(config.agendas.views.calendar_compact.title, "Next 14 Days")
+	MiniTest.expect.equality(config.agendas.views.calendar_compact.filters.date_range.days, 14)
 end
 
 T["show_tabbed_agenda - function exists"] = function()
@@ -82,7 +85,7 @@ T["custom view - high priority filter"] = function()
 						priorities = { "A", "B" },
 					},
 					sort = { by = "priority", order = "asc" },
-					display = { format = "compact" },
+					display = { format = "timeline" },
 				},
 			},
 		},
@@ -121,7 +124,7 @@ end
 
 -- Test that all display formats are valid
 T["config validation - all display formats valid"] = function()
-	local valid_formats = { "default", "compact", "detailed" }
+	local valid_formats = { "blocks", "timeline" }
 
 	for _, format in ipairs(valid_formats) do
 		local test_config = {

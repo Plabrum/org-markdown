@@ -311,134 +311,6 @@ end
 
 -- Formatter registry with built-in presets
 local formatters = {
-	default = {
-		flat = function(item)
-			-- Format: [#A] TODO          Task title (filename)
-			local p = item.priority and string.format("[#%s] ", item.priority) or ""
-			local state = string.format("%-12s ", item.state or "")
-			local filename = string.format("(%s)", vim.fn.fnamemodify(item.file, ":t"))
-			return string.format("%s%s%s %s", p, state, item.title, filename)
-		end,
-
-		grouped = function(item)
-			-- Format:     • TODO [A] Task title
-			local parts = {}
-			if item.state then
-				table.insert(parts, item.state)
-			end
-			if item.priority then
-				table.insert(parts, string.format("[%s]", item.priority))
-			end
-
-			local label = #parts > 0 and (table.concat(parts, " ") .. " ") or ""
-			return string.format("    • %s%s", label, item.title)
-		end,
-
-		group_header = function(group_key, group_by)
-			if group_by == "date" then
-				return "  " .. formatter.format_date(group_key)
-			else
-				return group_key
-			end
-		end,
-	},
-
-	compact = {
-		flat = function(item)
-			local state = item.state or ""
-			return string.format("%s %s", state, item.title)
-		end,
-
-		grouped = function(item)
-			return string.format("  • %s", item.title)
-		end,
-
-		group_header = function(group_key)
-			return group_key
-		end,
-	},
-
-	detailed = {
-		flat = function(item)
-			local parts = { string.format("▸ %s", item.title) }
-			local meta = {}
-			if item.state then
-				table.insert(meta, "State: " .. item.state)
-			end
-			if item.priority then
-				table.insert(meta, "Priority: #" .. item.priority)
-			end
-			if item.date then
-				table.insert(meta, "Date: " .. item.date)
-			end
-			if #meta > 0 then
-				table.insert(parts, "  " .. table.concat(meta, " | "))
-			end
-			return table.concat(parts, "\n")
-		end,
-
-		grouped = function(item)
-			return string.format("  ▸ %s", item.title)
-		end,
-
-		group_header = function(group_key, group_by)
-			if group_by == "date" then
-				return "  " .. formatter.format_date(group_key)
-			else
-				return group_key
-			end
-		end,
-	},
-
-	timeline = {
-		flat = function(item)
-			local time_str = ""
-			if item.all_day then
-				time_str = "(all-day)   "
-			elseif item.start_time then
-				if item.end_time then
-					time_str = string.format("%s-%-7s", item.start_time, item.end_time)
-				else
-					time_str = string.format("%-13s", item.start_time)
-				end
-			else
-				time_str = "             "
-			end
-
-			local tags_str = #item.tags > 0 and " :" .. table.concat(item.tags, ":") .. ":" or ""
-			return string.format("%s %s%s", time_str, item.title, tags_str)
-		end,
-
-		grouped = function(item)
-			if item.all_day then
-				local tags_str = #item.tags > 0 and " :" .. table.concat(item.tags, ":") .. ":" or ""
-				return string.format("    (all-day)    %s%s", item.title, tags_str)
-			end
-
-			local time_str = ""
-			if item.start_time then
-				if item.end_time then
-					time_str = string.format("%s-%-7s", item.start_time, item.end_time)
-				else
-					time_str = string.format("%-13s", item.start_time)
-				end
-			else
-				time_str = "             "
-			end
-
-			local tags_str = #item.tags > 0 and " :" .. table.concat(item.tags, ":") .. ":" or ""
-			return string.format("    %s %s%s", time_str, item.title, tags_str)
-		end,
-
-		group_header = function(group_key, group_by)
-			if group_by == "date" then
-				return "  " .. formatter.format_date(group_key)
-			else
-				return group_key
-			end
-		end,
-	},
-
 	blocks = {
 		flat = function(item)
 			if item.all_day then
@@ -553,37 +425,73 @@ local formatters = {
 		end,
 	},
 
-	compact_timeline = {
+	timeline = {
 		flat = function(item)
-			local time_str = ""
-			if item.all_day then
-				time_str = "[ALL-DAY] "
-			elseif item.start_time then
-				if item.end_time then
-					time_str = item.start_time .. "-" .. item.end_time .. " "
-				else
-					time_str = item.start_time .. " "
+			-- For tasks (with state), show: STATE [priority] title (time) :tags:
+			-- For calendar (no state), show: time title :tags:
+			local parts = {}
+
+			if item.state then
+				-- Task format: STATE [priority] title (time) :tags:
+				table.insert(parts, item.state)
+				if item.priority then
+					table.insert(parts, string.format("[%s]", item.priority))
 				end
+				table.insert(parts, item.title)
+
+				-- Add time inline if exists
+				if item.start_time then
+					local time_str = item.end_time and string.format("(%s-%s)", item.start_time, item.end_time)
+						or string.format("(%s)", item.start_time)
+					table.insert(parts, time_str)
+				end
+			else
+				-- Calendar format: time title :tags:
+				if item.all_day then
+					table.insert(parts, "[ALL-DAY]")
+				elseif item.start_time then
+					local time_str = item.end_time and item.start_time .. "-" .. item.end_time or item.start_time
+					table.insert(parts, time_str)
+				end
+				table.insert(parts, item.title)
 			end
 
 			local tags_str = #item.tags > 0 and " :" .. table.concat(item.tags, ":") .. ":" or ""
-			return time_str .. item.title .. tags_str
+			return table.concat(parts, " ") .. tags_str
 		end,
 
 		grouped = function(item)
-			local time_str = ""
-			if item.all_day then
-				time_str = "[ALL-DAY] "
-			elseif item.start_time then
-				if item.end_time then
-					time_str = item.start_time .. "-" .. item.end_time .. " "
-				else
-					time_str = item.start_time .. " "
+			-- For tasks (with state), show: STATE [priority] title (time) :tags:
+			-- For calendar (no state), show: time title :tags:
+			local parts = {}
+
+			if item.state then
+				-- Task format: STATE [priority] title (time) :tags:
+				table.insert(parts, item.state)
+				if item.priority then
+					table.insert(parts, string.format("[%s]", item.priority))
 				end
+				table.insert(parts, item.title)
+
+				-- Add time inline if exists
+				if item.start_time then
+					local time_str = item.end_time and string.format("(%s-%s)", item.start_time, item.end_time)
+						or string.format("(%s)", item.start_time)
+					table.insert(parts, time_str)
+				end
+			else
+				-- Calendar format: time title :tags:
+				if item.all_day then
+					table.insert(parts, "[ALL-DAY]")
+				elseif item.start_time then
+					local time_str = item.end_time and item.start_time .. "-" .. item.end_time or item.start_time
+					table.insert(parts, time_str)
+				end
+				table.insert(parts, item.title)
 			end
 
 			local tags_str = #item.tags > 0 and " :" .. table.concat(item.tags, ":") .. ":" or ""
-			return "    " .. time_str .. item.title .. tags_str
+			return "    " .. table.concat(parts, " ") .. tags_str
 		end,
 
 		group_header = function(group_key, group_by)
@@ -605,8 +513,8 @@ local function render_view(groups, view_def)
 	local lines = { view_def.title or "Agenda View", "" }
 	local line_to_item = {}
 
-	local format_name = (view_def.display and view_def.display.format) or "default"
-	local fmt = formatters[format_name] or formatters.default
+	local format_name = (view_def.display and view_def.display.format) or "timeline"
+	local fmt = formatters[format_name] or formatters.timeline
 
 	for _, group in ipairs(groups) do
 		if group.key then

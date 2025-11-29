@@ -42,9 +42,9 @@ The plugin follows a modular architecture with clear separation of concerns:
 - Scans markdown files for TODO/IN_PROGRESS headings and scheduled dates
 - Parses tasks using `parser.parse_headline()` which extracts state, priority, dates, and tags
 - Fully configurable view system with filter → sort → group → render pipeline
-- Views are defined in `config.agendas.views` with default "tasks" and "calendar" views
+- Views are defined in `config.agendas.views` with default "tasks", "calendar_blocks", and "calendar_compact" views
 - Supports tabbed navigation between multiple views via `config.agendas.tabbed_view`
-- Built-in formatters: "default", "compact", "detailed"
+- Built-in formatters: "blocks", "timeline"
 - Date formats: `<YYYY-MM-DD>` for tracked/scheduled items, `[YYYY-MM-DD]` for non-agenda timestamps
 
 **Capture System** (`capture.lua`)
@@ -153,7 +153,7 @@ Each view in `config.agendas.views` has the following structure:
   },
   group_by = "date",               -- Optional: "date", "priority", "state", "file", "tags"
   display = {                      -- Optional: formatting
-    format = "default"             -- "default", "compact", or "detailed"
+    format = "blocks"              -- "blocks" or "timeline"
   }
 }
 ```
@@ -170,7 +170,7 @@ config.agendas.views.urgent = {
     tags = { "work" }
   },
   sort = { by = "date", order = "asc" },
-  display = { format = "detailed" }
+  display = { format = "timeline" }
 }
 
 -- This week's calendar grouped by date
@@ -182,7 +182,7 @@ config.agendas.views.week = {
   },
   sort = { by = "date", order = "asc" },
   group_by = "date",
-  display = { format = "default" }
+  display = { format = "blocks" }
 }
 
 -- All items grouped by file
@@ -191,7 +191,7 @@ config.agendas.views.by_file = {
   source = "all",
   sort = { by = "file", order = "asc" },
   group_by = "file",
-  display = { format = "compact" }
+  display = { format = "timeline" }
 }
 ```
 
