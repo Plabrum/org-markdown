@@ -68,6 +68,9 @@ local function scan_files()
 					state = heading.state,
 					priority = heading.priority,
 					date = heading.tracked,
+					start_time = heading.start_time,
+					end_time = heading.end_time,
+					all_day = heading.all_day,
 					line = i,
 					file = file,
 					tags = heading.tags,
@@ -80,6 +83,9 @@ local function scan_files()
 					state = heading.state,
 					priority = heading.priority,
 					date = heading.tracked,
+					start_time = heading.start_time,
+					end_time = heading.end_time,
+					all_day = heading.all_day,
 					line = i,
 					file = file,
 					tags = heading.tags,
@@ -276,6 +282,30 @@ local function group_items(items, group_by)
 	for _, key in ipairs(keys_order) do
 		table.insert(result, { key = key, items = grouped[key] })
 	end
+
+	-- Sort within date groups: timed events first (by time), then all-day
+	if group_by == "date" then
+		for _, group in ipairs(result) do
+			table.sort(group.items, function(a, b)
+				-- All-day events go last
+				if a.all_day and not b.all_day then
+					return false
+				end
+				if b.all_day and not a.all_day then
+					return true
+				end
+
+				-- Both timed: sort by start time
+				if a.start_time and b.start_time then
+					return a.start_time < b.start_time
+				end
+
+				-- No specific order otherwise
+				return false
+			end)
+		end
+	end
+
 	return result
 end
 
@@ -354,6 +384,215 @@ local formatters = {
 		group_header = function(group_key, group_by)
 			if group_by == "date" then
 				return "  " .. formatter.format_date(group_key)
+			else
+				return group_key
+			end
+		end,
+	},
+
+	timeline = {
+		flat = function(item)
+			local time_str = ""
+			if item.all_day then
+				time_str = "(all-day)   "
+			elseif item.start_time then
+				if item.end_time then
+					time_str = string.format("%s-%-7s", item.start_time, item.end_time)
+				else
+					time_str = string.format("%-13s", item.start_time)
+				end
+			else
+				time_str = "             "
+			end
+
+			local tags_str = #item.tags > 0 and " :" .. table.concat(item.tags, ":") .. ":" or ""
+			return string.format("%s %s%s", time_str, item.title, tags_str)
+		end,
+
+		grouped = function(item)
+			if item.all_day then
+				local tags_str = #item.tags > 0 and " :" .. table.concat(item.tags, ":") .. ":" or ""
+				return string.format("    (all-day)    %s%s", item.title, tags_str)
+			end
+
+			local time_str = ""
+			if item.start_time then
+				if item.end_time then
+					time_str = string.format("%s-%-7s", item.start_time, item.end_time)
+				else
+					time_str = string.format("%-13s", item.start_time)
+				end
+			else
+				time_str = "             "
+			end
+
+			local tags_str = #item.tags > 0 and " :" .. table.concat(item.tags, ":") .. ":" or ""
+			return string.format("    %s %s%s", time_str, item.title, tags_str)
+		end,
+
+		group_header = function(group_key, group_by)
+			if group_by == "date" then
+				return "  " .. formatter.format_date(group_key)
+			else
+				return group_key
+			end
+		end,
+	},
+
+	blocks = {
+		flat = function(item)
+			if item.all_day then
+				local tags_str = #item.tags > 0 and " :" .. table.concat(item.tags, ":") .. ":" or ""
+				return "▓▓ " .. item.title .. " (all-day)" .. tags_str
+			end
+
+			if item.start_time and item.end_time then
+				-- Create multi-line block
+				local box_width = 50
+				local title_with_tags = item.title
+				if #item.tags > 0 then
+					title_with_tags = title_with_tags .. " :" .. table.concat(item.tags, ":") .. ":"
+				end
+
+				-- Wrap text to fit in box
+				local lines = {}
+				local remaining = title_with_tags
+				while #remaining > 0 do
+					if #remaining <= box_width - 4 then
+						table.insert(lines, remaining)
+						break
+					else
+						local break_at = box_width - 4
+						for i = break_at, 1, -1 do
+							if remaining:sub(i, i):match("%s") then
+								break_at = i
+								break
+							end
+						end
+						table.insert(lines, vim.trim(remaining:sub(1, break_at)))
+						remaining = vim.trim(remaining:sub(break_at + 1))
+					end
+				end
+
+				-- Build the block
+				local result = {}
+				table.insert(result, string.format("┌─ %s %s┐", item.start_time, string.rep("─", box_width - 9)))
+				for _, line in ipairs(lines) do
+					table.insert(result, string.format("│ %-" .. (box_width - 2) .. "s │", line))
+				end
+				table.insert(result, string.format("└%s %s ─┘", string.rep("─", box_width - 9), item.end_time))
+
+				return table.concat(result, "\n")
+			elseif item.start_time then
+				local tags_str = #item.tags > 0 and " :" .. table.concat(item.tags, ":") .. ":" or ""
+				return item.start_time .. "  " .. item.title .. tags_str
+			else
+				local tags_str = #item.tags > 0 and " :" .. table.concat(item.tags, ":") .. ":" or ""
+				return item.title .. tags_str
+			end
+		end,
+
+		grouped = function(item)
+			if item.all_day then
+				local tags_str = #item.tags > 0 and " :" .. table.concat(item.tags, ":") .. ":" or ""
+				return "    ▓▓ " .. item.title .. " (all-day)" .. tags_str
+			end
+
+			if item.start_time and item.end_time then
+				-- Create multi-line block with indentation
+				local box_width = 50
+				local title_with_tags = item.title
+				if #item.tags > 0 then
+					title_with_tags = title_with_tags .. " :" .. table.concat(item.tags, ":") .. ":"
+				end
+
+				-- Wrap text to fit in box
+				local lines = {}
+				local remaining = title_with_tags
+				while #remaining > 0 do
+					if #remaining <= box_width - 4 then
+						table.insert(lines, remaining)
+						break
+					else
+						local break_at = box_width - 4
+						for i = break_at, 1, -1 do
+							if remaining:sub(i, i):match("%s") then
+								break_at = i
+								break
+							end
+						end
+						table.insert(lines, vim.trim(remaining:sub(1, break_at)))
+						remaining = vim.trim(remaining:sub(break_at + 1))
+					end
+				end
+
+				-- Build the block with indentation
+				local result = {}
+				table.insert(result, string.format("    ┌─ %s %s┐", item.start_time, string.rep("─", box_width - 9)))
+				for _, line in ipairs(lines) do
+					table.insert(result, string.format("    │ %-" .. (box_width - 2) .. "s │", line))
+				end
+				table.insert(result, string.format("    └%s %s ─┘", string.rep("─", box_width - 9), item.end_time))
+
+				return table.concat(result, "\n")
+			elseif item.start_time then
+				local tags_str = #item.tags > 0 and " :" .. table.concat(item.tags, ":") .. ":" or ""
+				return "    " .. item.start_time .. "  " .. item.title .. tags_str
+			else
+				local tags_str = #item.tags > 0 and " :" .. table.concat(item.tags, ":") .. ":" or ""
+				return "    " .. item.title .. tags_str
+			end
+		end,
+
+		group_header = function(group_key, group_by)
+			if group_by == "date" then
+				return "  " .. formatter.format_date(group_key)
+			else
+				return group_key
+			end
+		end,
+	},
+
+	compact_timeline = {
+		flat = function(item)
+			local time_str = ""
+			if item.all_day then
+				time_str = "[ALL-DAY] "
+			elseif item.start_time then
+				if item.end_time then
+					time_str = item.start_time .. "-" .. item.end_time .. " "
+				else
+					time_str = item.start_time .. " "
+				end
+			end
+
+			local tags_str = #item.tags > 0 and " :" .. table.concat(item.tags, ":") .. ":" or ""
+			return time_str .. item.title .. tags_str
+		end,
+
+		grouped = function(item)
+			local time_str = ""
+			if item.all_day then
+				time_str = "[ALL-DAY] "
+			elseif item.start_time then
+				if item.end_time then
+					time_str = item.start_time .. "-" .. item.end_time .. " "
+				else
+					time_str = item.start_time .. " "
+				end
+			end
+
+			local tags_str = #item.tags > 0 and " :" .. table.concat(item.tags, ":") .. ":" or ""
+			return "    " .. time_str .. item.title .. tags_str
+		end,
+
+		group_header = function(group_key, group_by)
+			if group_by == "date" then
+				local y, m, d = group_key:match("(%d+)%-(%d+)%-(%d+)")
+				local time = os.time({ year = y, month = m, day = d })
+				return "  "
+					.. os.date("%a %d %b", time)
+					.. " ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
 			else
 				return group_key
 			end

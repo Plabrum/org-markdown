@@ -41,12 +41,51 @@ local M = {
 					order = "asc",
 				},
 				group_by = "date",
-				display = { format = "default" },
+				display = { format = "blocks" },
+			},
+			calendar_timeline = {
+				title = "Calendar Timeline (7 days)",
+				source = "calendar",
+				filters = {
+					date_range = { days = 7, offset = 0 },
+				},
+				sort = {
+					by = "date",
+					order = "asc",
+				},
+				group_by = "date",
+				display = { format = "timeline" },
+			},
+			calendar_blocks = {
+				title = "Calendar Blocks (7 days)",
+				source = "calendar",
+				filters = {
+					date_range = { days = 7, offset = 0 },
+				},
+				sort = {
+					by = "date",
+					order = "asc",
+				},
+				group_by = "date",
+				display = { format = "blocks" },
+			},
+			calendar_compact = {
+				title = "Calendar Compact (14 days)",
+				source = "calendar",
+				filters = {
+					date_range = { days = 14, offset = 0 },
+				},
+				sort = {
+					by = "date",
+					order = "asc",
+				},
+				group_by = "date",
+				display = { format = "compact_timeline" },
 			},
 		},
 		tabbed_view = {
 			enabled = true,
-			views = { "tasks", "calendar" },
+			views = { "tasks", "calendar", "calendar_timeline", "calendar_compact" },
 		},
 	},
 	window_method = "vertical",
@@ -125,7 +164,12 @@ local function validate_view(view_id, view_def)
 	end
 
 	if view_def.display and view_def.display.format then
-		if not vim.tbl_contains({ "default", "compact", "detailed" }, view_def.display.format) then
+		if
+			not vim.tbl_contains(
+				{ "default", "compact", "detailed", "timeline", "blocks", "compact_timeline" },
+				view_def.display.format
+			)
+		then
 			table.insert(warnings, "Invalid display.format: " .. view_def.display.format)
 		end
 	end

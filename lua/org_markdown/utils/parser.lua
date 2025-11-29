@@ -56,6 +56,26 @@ function M.extract_date(line)
 	return tracked, untracked
 end
 
+function M.extract_times(line)
+	-- Match multi-day time range: <YYYY-MM-DD Day HH:MM>--<YYYY-MM-DD Day HH:MM>
+	local start_time = line:match("<[^>]*(%d%d:%d%d)>%-%-%<")
+	if start_time then
+		local end_time = line:match(">%-%-%<[^>]*(%d%d:%d%d)>")
+		return start_time, end_time
+	end
+
+	-- Match same-day time range: <YYYY-MM-DD Day HH:MM-HH:MM>
+	local end_time
+	start_time, end_time = line:match("<[^>]*(%d%d:%d%d)%-(%d%d:%d%d)")
+	if start_time then
+		return start_time, end_time
+	end
+
+	-- Match single time: <YYYY-MM-DD Day HH:MM>
+	start_time = line:match("<[^>]*(%d%d:%d%d)>")
+	return start_time, nil
+end
+
 function M.extract_tags(line)
 	local tags = {}
 	local tag_block = line:match("(:[%w:_-]+:)$")
@@ -78,11 +98,16 @@ function M.parse_headline(line)
 		return nil
 	end
 	local tracked, untracked = M.extract_date(line)
+	local start_time, end_time = M.extract_times(line)
+
 	return {
 		state = M.parse_state(line),
 		priority = M.parse_priority(line),
 		tracked = tracked,
 		untracked = untracked,
+		start_time = start_time,
+		end_time = end_time,
+		all_day = start_time == nil,
 		text = M.parse_text(line),
 		tags = M.extract_tags(line),
 	}
