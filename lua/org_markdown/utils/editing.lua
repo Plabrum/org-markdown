@@ -28,10 +28,10 @@ function M.cycle_checkbox_inline(line, states)
 end
 
 function M.cycle_status_inline(line, states)
-	local heading_pattern = "^(#+)%s+(%u[%u_%-]*)%s+(.*)$"
+	local heading_pattern = "^(#+)%s+(%u[%u_%-]*)%s*(.*)$"
 	local hashes, current, rest = line:match(heading_pattern)
 
-	if not (hashes and current and rest) then
+	if not (hashes and current) then
 		return nil
 	end
 
@@ -49,7 +49,13 @@ function M.cycle_status_inline(line, states)
 
 	local next_state = states[(index % #states) + 1]
 
-	return { string.format("%s %s %s", hashes, next_state, rest) }
+	-- Preserve spacing: if rest starts with content, add a space; otherwise keep as-is
+	local new_rest = rest
+	if rest and rest ~= "" and not rest:match("^%s") and not rest:match("^[%p]") then
+		new_rest = " " .. rest
+	end
+
+	return { string.format("%s %s%s", hashes, next_state, new_rest) }
 end
 
 function M.continue_todo(line)
@@ -119,6 +125,13 @@ function M.setup_editing_keybinds(bufnr)
 			vim.api.nvim_feedkeys(vim.api.nvim_replace_termcodes("<CR>", true, false, true), "n", false)
 		end
 	end, { desc = "org-markdown: cycle or enter", buffer = bufnr })
+
+	-- NORMAL: <Tab> cycles checkbox/status
+	vim.keymap.set("n", "<Tab>", function()
+		M.edit_line_at_cursor(function(line)
+			return M.cycle_checkbox_inline(line, config.checkbox_states) or M.cycle_status_inline(line, config.status_states)
+		end)
+	end, { desc = "org-markdown: cycle todo state", buffer = bufnr })
 
 	-- INSERT: <CR> continues todos, else default <CR>
 	vim.keymap.set("i", "<CR>", function()

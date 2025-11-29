@@ -35,8 +35,13 @@ function M.parse_text(line)
 	-- Remove leading priority like [#A]
 	text = text:gsub("%[%#.%]%s*", "")
 
-	-- Remove all dates (both <YYYY-MM-DD> and [YYYY-MM-DD])
-	text = text:gsub("[<%[]%d%d%d%d%-%d%d%-%d%d[]>]%s*", "")
+	-- Remove all dates with optional day names, times, and ranges
+	-- Handles: <YYYY-MM-DD>, <YYYY-MM-DD Mon>, <YYYY-MM-DD Mon 14:00>, <YYYY-MM-DD Mon 14:00-15:00>
+	-- Also handles multi-day ranges: <YYYY-MM-DD Mon>--<YYYY-MM-DD Tue>
+	text = text:gsub("<%d%d%d%d%-%d%d%-%d%d[^>]*>", "")
+	text = text:gsub("%[%d%d%d%d%-%d%d%-%d%d[^%]]*%]", "")
+	-- Remove double-dash between date ranges
+	text = text:gsub("%-%-+%s*", "")
 
 	-- Remove trailing tags like :tag:tag:
 	text = text:gsub("%s+:[%w:_-]+:$", "")
@@ -45,8 +50,9 @@ function M.parse_text(line)
 end
 
 function M.extract_date(line)
-	local tracked = line:match("<(%d%d%d%d%-%d%d%-%d%d)>")
-	local untracked = line:match("%[(%d%d%d%d%-%d%d%-%d%d)%]")
+	-- Match date with optional day name and time: <YYYY-MM-DD>, <YYYY-MM-DD Tue>, <YYYY-MM-DD Tue 14:00>
+	local tracked = line:match("<(%d%d%d%d%-%d%d%-%d%d)")
+	local untracked = line:match("%[(%d%d%d%d%-%d%d%-%d%d)")
 	return tracked, untracked
 end
 

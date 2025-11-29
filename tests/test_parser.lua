@@ -47,6 +47,27 @@ T["extract_date - no date returns nil"] = function()
 	MiniTest.expect.equality(tracked, nil)
 	MiniTest.expect.equality(untracked, nil)
 end
+
+T["extract_date - date with day name and time"] = function()
+	local line = "# Event <2025-12-01 Mon 17:30>"
+	local tracked, untracked = parser.extract_date(line)
+	MiniTest.expect.equality(tracked, "2025-12-01")
+	MiniTest.expect.equality(untracked, nil)
+end
+
+T["extract_date - date with day name and time range"] = function()
+	local line = "# Event <2025-12-01 Mon 17:30-18:00>"
+	local tracked, untracked = parser.extract_date(line)
+	MiniTest.expect.equality(tracked, "2025-12-01")
+	MiniTest.expect.equality(untracked, nil)
+end
+
+T["extract_date - multi-day date range"] = function()
+	local line = "# Event <2025-12-01 Mon 17:30>--<2025-12-02 Tue 01:10>"
+	local tracked, untracked = parser.extract_date(line)
+	MiniTest.expect.equality(tracked, "2025-12-01")
+	MiniTest.expect.equality(untracked, nil)
+end
 -- Safe substitution (with capture characters)
 local function capture_template_escape(marker)
 	return parser.escape_marker(marker, { "^", "?", "%" })

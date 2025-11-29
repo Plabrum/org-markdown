@@ -136,25 +136,20 @@ local function format_event_as_markdown(event, plugin_config)
 	local lines = {}
 	local heading_level = plugin_config.heading_level or 1
 
-	-- Build heading
+	-- Build heading with date on the same line for agenda compatibility
 	local heading = string.rep("#", heading_level) .. " " .. event.title
 
-	-- Add tags with padding
+	-- Add date
+	local date_str = format_date_range(event)
+	heading = heading .. " " .. date_str
+
+	-- Add tags with minimal padding
 	if event.tags and #event.tags > 0 then
 		local tag_str = ":" .. table.concat(event.tags, ":") .. ":"
-		local padding_length = 80 - vim.fn.strdisplaywidth(heading) - vim.fn.strdisplaywidth(tag_str)
-		if padding_length > 1 then
-			heading = heading .. string.rep(" ", padding_length) .. tag_str
-		else
-			heading = heading .. " " .. tag_str
-		end
+		heading = heading .. " " .. tag_str
 	end
 
 	table.insert(lines, heading)
-
-	-- Build date line
-	local date_line = format_date_range(event)
-	table.insert(lines, date_line)
 
 	-- Optional body
 	if event.body and event.body ~= "" then

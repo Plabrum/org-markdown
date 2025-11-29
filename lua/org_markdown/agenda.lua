@@ -4,12 +4,34 @@ local utils = require("org_markdown.utils.utils")
 local parser = require("org_markdown.utils.parser")
 local formatter = require("org_markdown.utils.formatter")
 local queries = require("org_markdown.utils.queries")
+local editing = require("org_markdown.utils.editing")
 
 local M = {}
 vim.api.nvim_set_hl(0, "OrgTodo", { fg = "#ff5f5f", bold = true })
 vim.api.nvim_set_hl(0, "OrgInProgress", { fg = "#f0c000", bold = true })
 vim.api.nvim_set_hl(0, "OrgDone", { fg = "#5fd75f", bold = true })
 vim.api.nvim_set_hl(0, "OrgTitle", { fg = "#87afff", bold = true })
+
+-- Helper function to cycle TODO state in a file
+local function cycle_todo_in_file(item)
+	local lines = utils.read_lines(item.file)
+	local line = lines[item.line]
+	if not line then
+		return false
+	end
+
+	-- Try to cycle the line
+	local new_lines = editing.cycle_checkbox_inline(line, config.checkbox_states)
+		or editing.cycle_status_inline(line, config.status_states)
+
+	if new_lines and new_lines[1] then
+		lines[item.line] = new_lines[1]
+		utils.write_lines(item.file, lines)
+		return true
+	end
+
+	return false
+end
 
 local function highlight_states(buf, lines)
 	for i, line in ipairs(lines) do
@@ -167,23 +189,37 @@ local function compare_items(a, b, sort_spec)
 	local field = sort_spec.by
 	local ascending = sort_spec.order ~= "desc"
 
-	local result
+	-- Get the values to compare
+	local val_a, val_b
 	if field == "priority" then
 		local rank = sort_spec.priority_rank or { A = 1, B = 2, C = 3, Z = 99 }
 		local pa = a.priority or "Z"
 		local pb = b.priority or "Z"
-		result = (rank[pa] or 99) < (rank[pb] or 99)
+		val_a = rank[pa] or 99
+		val_b = rank[pb] or 99
 	elseif field == "date" then
-		result = (a.date or "9999-99-99") < (b.date or "9999-99-99")
+		val_a = a.date or "9999-99-99"
+		val_b = b.date or "9999-99-99"
 	elseif field == "state" then
-		result = (a.state or "") < (b.state or "")
+		val_a = a.state or ""
+		val_b = b.state or ""
 	elseif field == "title" then
-		result = (a.title or "") < (b.title or "")
+		val_a = a.title or ""
+		val_b = b.title or ""
 	elseif field == "file" then
-		result = (a.source or "") < (b.source or "")
+		val_a = a.source or ""
+		val_b = b.source or ""
+	else
+		-- Unknown field, return false to maintain stability
+		return false
 	end
 
-	return ascending and result or not result
+	-- Proper comparison that maintains strict weak ordering
+	if ascending then
+		return val_a < val_b
+	else
+		return val_b < val_a
+	end
 end
 
 -- Apply sorting to a list of items
@@ -247,7 +283,7 @@ end
 local formatters = {
 	default = {
 		flat = function(item)
-			-- Current get_task_lines() format
+			-- Format: [#A] TODO          Task title (filename)
 			local p = item.priority and string.format("[#%s] ", item.priority) or ""
 			local state = string.format("%-12s ", item.state or "")
 			local filename = string.format("(%s)", vim.fn.fnamemodify(item.file, ":t"))
@@ -255,7 +291,7 @@ local formatters = {
 		end,
 
 		grouped = function(item)
-			-- Current get_calendar_lines() format
+			-- Format:     • TODO [A] Task title
 			local parts = {}
 			if item.state then
 				table.insert(parts, item.state)
@@ -421,7 +457,7 @@ function M.show_view(view_id)
 		title = view_def.title or view_id,
 		method = config.agendas.window_method,
 		filetype = "markdown",
-		footer = "Press <CR> to jump to file, q to close",
+		footer = "<Tab> cycle | <CR> jump to file | q close",
 	})
 
 	vim.api.nvim_buf_set_lines(buf, 0, -1, false, lines)
@@ -441,93 +477,26 @@ function M.show_view(view_id)
 			vim.api.nvim_win_set_cursor(0, { item.line, 0 })
 		end
 	end, { buffer = buf, silent = true })
-end
 
-local function get_next_seven_days()
-	local today = os.time()
-	local days = {}
-	for i = 0, 6 do
-		local t = os.date("%Y-%m-%d", today + i * 86400)
-		table.insert(days, t)
-	end
-	return days
-end
-
-------------------display --------------------------
-local function priority_sort(a, b)
-	local rank = { A = 1, B = 2, C = 3, Z = 99 }
-	local pa = a.priority or "Z"
-	local pb = b.priority or "Z"
-	return rank[pa] < rank[pb]
-end
-
-local function get_calendar_lines()
-	local items = scan_files().calendar
-
-	-- Group entries by date
-	local grouped = {}
-	for _, d in ipairs(get_next_seven_days()) do
-		grouped[d] = {}
-	end
-	for _, item in ipairs(items) do
-		if grouped[item.date] then
-			table.insert(grouped[item.date], item)
-		end
-	end
-
-	-- Begin output
-	local lines = {}
-	local line_to_item = {} -- Maps display line number to agenda item
-	table.insert(lines, "Agenda (next 7 days)")
-	table.insert(lines, "")
-
-	-- Render each day with entries
-	for _, date in ipairs(get_next_seven_days()) do
-		table.insert(lines, "  " .. formatter.format_date(date))
-		local day_items = grouped[date]
-
-		if #day_items == 0 then
-			table.insert(lines, "    (no entries)")
-		else
-			for _, entry in ipairs(day_items) do
-				local parts = {}
-
-				if entry.state then
-					table.insert(parts, string.format("%s", entry.state))
-				end
-				if entry.priority then
-					table.insert(parts, string.format("[%s]", entry.priority))
-				end
-
-				local label = #parts > 0 and (table.concat(parts, " ") .. " ") or ""
-				local prefix = string.format("    • %s%s", label, entry.title)
-				table.insert(lines, prefix)
-				line_to_item[#lines] = entry -- Store the mapping
+	-- Add keymap to cycle TODO state
+	vim.keymap.set("n", "<Tab>", function()
+		local cursor = vim.api.nvim_win_get_cursor(win)
+		local line_num = cursor[1]
+		local item = line_to_item[line_num]
+		if item and cycle_todo_in_file(item) then
+			-- Refresh the view
+			local new_lines, new_line_to_item = process_view(view_id, view_def)
+			vim.bo[buf].modifiable = true
+			vim.api.nvim_buf_set_lines(buf, 0, -1, false, new_lines)
+			vim.bo[buf].modifiable = false
+			highlight_states(buf, new_lines)
+			line_to_item = new_line_to_item
+			-- Restore cursor position
+			if vim.api.nvim_win_is_valid(win) then
+				vim.api.nvim_win_set_cursor(win, cursor)
 			end
 		end
-
-		table.insert(lines, "")
-	end
-
-	return lines, line_to_item
-end
-
-local function get_task_lines()
-	local items = scan_files().tasks
-	table.sort(items, priority_sort)
-
-	local lines = { "AgendaTask (by priority)", "" }
-	local line_to_item = {} -- Maps display line number to agenda item
-	for _, item in ipairs(items) do
-		local p = item.priority and string.format("[#%s] ", item.priority) or ""
-		local state = string.format("%-12s ", item.state)
-		local filename = string.format("(%s)", vim.fn.fnamemodify(item.file, ":t"))
-		local line = string.format("%s%s%s %s", p, state, item.title, filename)
-		table.insert(lines, line)
-		line_to_item[#lines] = item -- Store the mapping
-	end
-
-	return lines, line_to_item
+	end, { buffer = buf, silent = true })
 end
 
 -- Tab cycling helper functions
@@ -571,7 +540,7 @@ refresh_tab_content = function(buf, win, tab_index, view_id)
 	local tab_config = config.agendas.tabbed_view or { views = { "tasks", "calendar" } }
 	local num_tabs = #tab_config.views
 	local footer = string.format(
-		"Tab [%d/%d] %s | ] next | [ prev | <CR> jump | q close",
+		"Tab [%d/%d] %s | <Tab> cycle | ] next | [ prev | <CR> jump | q close",
 		tab_index,
 		num_tabs,
 		view_def.title or view_id
@@ -586,7 +555,10 @@ refresh_tab_content = function(buf, win, tab_index, view_id)
 	end
 
 	if vim.api.nvim_win_is_valid(win) then
-		vim.api.nvim_win_set_cursor(win, { 3, 0 })
+		-- Set cursor to line 3 or last line if buffer is shorter
+		local line_count = vim.api.nvim_buf_line_count(buf)
+		local target_line = math.min(3, line_count)
+		vim.api.nvim_win_set_cursor(win, { target_line, 0 })
 	end
 end
 
@@ -623,6 +595,23 @@ function M.show_tabbed_agenda()
 			vim.api.nvim_win_close(win, true)
 			vim.cmd("edit " .. vim.fn.fnameescape(item.file))
 			vim.api.nvim_win_set_cursor(0, { item.line, 0 })
+		end
+	end, { buffer = buf, silent = true })
+
+	vim.keymap.set("n", "<Tab>", function()
+		local cursor = vim.api.nvim_win_get_cursor(win)
+		local line_num = cursor[1]
+		local item = vim.b[buf].agenda_line_to_item[line_num]
+		if item and cycle_todo_in_file(item) then
+			-- Refresh the current tab
+			local current_tab = vim.b[buf].agenda_current_tab or 1
+			local tab_config = config.agendas.tabbed_view or { views = { "tasks", "calendar" } }
+			local current_view_id = tab_config.views[current_tab]
+			refresh_tab_content(buf, win, current_tab, current_view_id)
+			-- Restore cursor position
+			if vim.api.nvim_win_is_valid(win) then
+				vim.api.nvim_win_set_cursor(win, cursor)
+			end
 		end
 	end, { buffer = buf, silent = true })
 

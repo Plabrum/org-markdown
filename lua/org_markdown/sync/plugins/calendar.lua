@@ -73,59 +73,43 @@ end
 --- @param end_date string YYYY-MM-DD format
 --- @return table|nil, string|nil events, error
 local function fetch_calendar_events(calendars, start_date, end_date)
-	-- Convert YYYY-MM-DD to AppleScript date format: "MM/DD/YYYY"
-	local function to_applescript_date(iso_date)
+	-- Convert YYYY-MM-DD to day offset from today
+	local function days_from_today(iso_date)
 		local year, month, day = iso_date:match("(%d%d%d%d)-(%d%d)-(%d%d)")
-		return string.format("%s/%s/%s", month, day, year)
+		local target_time = os.time({ year = tonumber(year), month = tonumber(month), day = tonumber(day) })
+		local today_time = os.time()
+		return math.floor((target_time - today_time) / 86400)
 	end
 
-	local start_as = to_applescript_date(start_date)
-	local end_as = to_applescript_date(end_date)
+	local days_behind = -days_from_today(start_date)
+	local days_ahead = days_from_today(end_date)
 
-	-- Build calendar list for AppleScript
-	local cal_list_parts = {}
-	for _, cal in ipairs(calendars) do
-		table.insert(cal_list_parts, '"' .. cal:gsub('"', '\\"') .. '"')
+	-- Build comma-separated calendar list
+	local cal_list = table.concat(calendars, ",")
+
+	-- Get path to Swift helper script
+	local script_dir = vim.fn.fnamemodify(debug.getinfo(1, "S").source:sub(2), ":h")
+	local swift_script = script_dir .. "/calendar_fetch.swift"
+
+	-- Check if Swift script exists
+	if vim.fn.filereadable(swift_script) == 0 then
+		return nil, "Calendar Swift helper not found: " .. swift_script
 	end
-	local cal_list = "{" .. table.concat(cal_list_parts, ", ") .. "}"
 
-	local script = string.format(
-		[[
-tell application "Calendar"
-	set startDate to date "%s"
-	set endDate to date "%s"
-	set output to ""
+	vim.notify(string.format("Fetching events from %d calendar(s)...", #calendars), vim.log.levels.INFO)
 
-	repeat with calName in %s
-		try
-			set cal to calendar calName
-		on error
-			-- Calendar doesn't exist, skip
-			next repeat
-		end try
+	-- Execute Swift script (much faster than AppleScript!)
+	local cmd =
+		string.format("%s %s %d %d", vim.fn.shellescape(swift_script), vim.fn.shellescape(cal_list), days_behind, days_ahead)
 
-		repeat with evt in (every event of cal whose start date >= startDate and start date <= endDate)
-			set evtTitle to summary of evt
-			set evtStart to start date of evt as string
-			set evtEnd to end date of evt as string
-			set evtAllDay to allday event of evt as string
+	local output = vim.fn.systemlist(cmd)
 
-			set eventLine to (calName as string) & "|" & evtTitle & "|" & evtStart & "|" & evtEnd & "|" & evtAllDay
-			set output to output & eventLine & linefeed
-		end repeat
-	end repeat
-
-	return output
-end tell
-]],
-		start_as,
-		end_as,
-		cal_list
-	)
-
-	local output = vim.fn.systemlist({ "osascript", "-e", script })
 	if vim.v.shell_error ~= 0 then
-		return nil, "Failed to fetch calendar events from Calendar.app"
+		local error_msg = table.concat(output, "\n")
+		if error_msg == "" then
+			error_msg = "Swift calendar helper failed (exit code: " .. vim.v.shell_error .. ")"
+		end
+		return nil, error_msg
 	end
 
 	return output, nil
