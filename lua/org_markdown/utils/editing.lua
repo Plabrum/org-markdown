@@ -112,8 +112,7 @@ function M.setup_editing_keybinds(bufnr)
 	-- NORMAL: <CR> cycles checkbox/status, else fall back to default <CR>
 	vim.keymap.set("n", "<CR>", function()
 		local did = M.edit_line_at_cursor(function(line)
-			return M.cycle_checkbox_inline(line, config.checkbox_states)
-				or M.cycle_status_inline(line, config.status_states)
+			return M.cycle_checkbox_inline(line, config.checkbox_states) or M.cycle_status_inline(line, config.status_states)
 		end)
 		if not did then
 			vim.api.nvim_feedkeys(vim.api.nvim_replace_termcodes("<CR>", true, false, true), "n", false)

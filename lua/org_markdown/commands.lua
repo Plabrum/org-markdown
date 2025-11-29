@@ -11,9 +11,11 @@ local M = {}
 -- Helper function to convert names to PascalCase
 local function name_to_pascal(name)
 	-- Convert names like "urgent_work" or "urgent-work" to "UrgentWork"
-	return name:gsub("[%s_%-]+(%w)", function(c)
-		return c:upper()
-	end):gsub("^(%l)", string.upper)
+	return name
+		:gsub("[%s_%-]+(%w)", function(c)
+			return c:upper()
+		end)
+		:gsub("^(%l)", string.upper)
 end
 
 function M.register()

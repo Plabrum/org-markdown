@@ -65,10 +65,7 @@ function M.register_plugin(plugin_module)
 	if type(plugin_module.setup) == "function" then
 		local ok, err = pcall(plugin_module.setup, config.sync.plugins[plugin_module.name])
 		if not ok then
-			vim.notify(
-				"Failed to setup sync plugin '" .. plugin_module.name .. "': " .. tostring(err),
-				vim.log.levels.ERROR
-			)
+			vim.notify("Failed to setup sync plugin '" .. plugin_module.name .. "': " .. tostring(err), vim.log.levels.ERROR)
 			return false
 		end
 		if err == false then
@@ -108,7 +105,9 @@ local function format_date_range(event)
 			date_str = date_str .. " " .. event.start_time
 		end
 
-		date_str = date_str .. ">--<" .. string.format("%04d-%02d-%02d %s", end_d.year, end_d.month, end_d.day, end_d.day_name)
+		date_str = date_str
+			.. ">--<"
+			.. string.format("%04d-%02d-%02d %s", end_d.year, end_d.month, end_d.day, end_d.day_name)
 
 		-- Add end time if timed event
 		if not event.all_day and event.end_time then
@@ -226,7 +225,10 @@ local function write_sync_file(events, plugin_name, plugin_config, stats)
 		table.insert(sync_section, string.format("<!-- Date range: %s -->", stats.date_range))
 	end
 	if stats.calendars then
-		table.insert(sync_section, string.format("<!-- Calendars: %s (%d total) -->", table.concat(stats.calendars, ", "), #stats.calendars))
+		table.insert(
+			sync_section,
+			string.format("<!-- Calendars: %s (%d total) -->", table.concat(stats.calendars, ", "), #stats.calendars)
+		)
 	end
 	if stats.source then
 		table.insert(sync_section, string.format("<!-- Source: %s -->", stats.source))
@@ -322,10 +324,7 @@ function M.sync_plugin(plugin_name)
 
 	-- Success notification
 	local count = stats.count or #events
-	vim.notify(
-		string.format("Synced %d events from %s", count, plugin.description or plugin_name),
-		vim.log.levels.INFO
-	)
+	vim.notify(string.format("Synced %d events from %s", count, plugin.description or plugin_name), vim.log.levels.INFO)
 
 	-- Clear lock
 	sync_locks[plugin_name] = false
@@ -366,10 +365,7 @@ function M.setup_auto_sync()
 
 		local interval = plugin_config.auto_sync_interval or 3600 -- Default 1 hour
 		if interval < 60 then
-			vim.notify(
-				"Auto-sync interval for " .. plugin_name .. " too short (minimum 60s), using 60s",
-				vim.log.levels.WARN
-			)
+			vim.notify("Auto-sync interval for " .. plugin_name .. " too short (minimum 60s), using 60s", vim.log.levels.WARN)
 			interval = 60
 		end
 

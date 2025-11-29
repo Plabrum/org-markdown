@@ -531,7 +531,7 @@ local function get_task_lines()
 end
 
 -- Tab cycling helper functions
-local refresh_tab_content  -- Forward declaration
+local refresh_tab_content -- Forward declaration
 
 local function cycle_tab(buf, win, direction)
 	local tab_config = config.agendas.tabbed_view or { views = { "tasks", "calendar" } }

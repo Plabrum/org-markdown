@@ -132,10 +132,7 @@ local function validate_view(view_id, view_def)
 	end
 
 	if #warnings > 0 then
-		vim.notify(
-			string.format("View '%s' warnings:\n%s", view_id, table.concat(warnings, "\n")),
-			vim.log.levels.WARN
-		)
+		vim.notify(string.format("View '%s' warnings:\n%s", view_id, table.concat(warnings, "\n")), vim.log.levels.WARN)
 	end
 end
 

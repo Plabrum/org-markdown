@@ -65,11 +65,13 @@ function async.promise(executor)
 			if not co then
 				error("await must be called inside a coroutine")
 			end
-			self:then_(function(val)
-				coroutine.resume(co, val)
-			end):catch_(function(e)
-				error(e)
-			end)
+			self
+				:then_(function(val)
+					coroutine.resume(co, val)
+				end)
+				:catch_(function(e)
+					error(e)
+				end)
 			return coroutine.yield()
 		end,
 	}
