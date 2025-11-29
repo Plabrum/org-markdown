@@ -21,53 +21,41 @@ function M.daily_note(_)
 	return tostring(os.date("journal_%Y-%m-%d.md"))
 end
 
-local function is_buffer_empty(lines)
-	for _, line in ipairs(lines) do
-		if line:match("%S") then
-			return false
-		end
-	end
-	return true
-end
-
 function M.open_quick_note(recipe_key)
 	local recipe = M.recipes[recipe_key]
 	if not recipe then
-		vim.notify("Quicknote recipe not found: " .. recipe.title, vim.log.levels.ERROR)
+		vim.notify("Quicknote recipe not found: " .. recipe_key, vim.log.levels.ERROR)
 		return
 	end
 
-	local quick_notes_dir = vim.fn.expand(config.quick_note_file) -- expand in case it contains '~'
-
-	-- Expect handler to return just a filename or relative pathSS
+	local quick_notes_dir = vim.fn.expand(config.quick_note_file)
 	local note_filename = recipe.handler()
 	local filepath = vim.fn.fnamemodify(quick_notes_dir .. note_filename, ":p")
 	local dir = vim.fn.fnamemodify(filepath, ":h")
 
-	local file_exists = vim.loop.fs_stat(filepath) ~= nil
-
-	local content = ""
-	if file_exists then
-		content = table.concat(vim.fn.readfile(filepath), "\n")
+	-- Validate filepath
+	if filepath == "" or filepath:match('[<>:"|?*]') then
+		vim.notify("Invalid quick note filename: " .. note_filename, vim.log.levels.ERROR)
+		return
 	end
+
+	-- Ensure directory exists before creating buffer
+	local mkdir_result = vim.fn.mkdir(dir, "p")
+	if mkdir_result == 0 and vim.fn.isdirectory(dir) == 0 then
+		vim.notify("Failed to create directory: " .. dir, vim.log.levels.ERROR)
+		return
+	end
+
+	-- Open window with filepath - create_buffer will handle buffer creation/reuse
 	local buf, win = utils.open_window({
 		method = config.window_method,
 		title = "Quick Note: " .. recipe.title,
 		filetype = "markdown",
-		footer = "Press q or <Esc> to save",
-		on_close = function(buf_num)
-			if vim.api.nvim_buf_is_valid(buf_num) then
-				local lines = vim.api.nvim_buf_get_lines(buf_num, 0, -1, false)
-				if not is_buffer_empty(lines) then
-					vim.fn.mkdir(dir, "p")
-					vim.fn.writefile(lines, filepath)
-				end
-			end
-		end,
+		footer = "Auto-saved on CursorHold/InsertLeave | Press q or <Esc> to close",
+		filepath = filepath, -- This triggers normal file buffer creation
 	})
 
-	local lines = content ~= "" and vim.split(content, "\n") or { "" }
-	vim.api.nvim_buf_set_lines(buf, 0, -1, false, lines)
+	-- Set cursor to beginning of file
 	utils.set_cursor(win, 0, 0, "n")
 end
 

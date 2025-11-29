@@ -3,6 +3,7 @@ local capture = require("org_markdown.capture")
 local refile = require("org_markdown.refile")
 local config = require("org_markdown.config")
 local find = require("org_markdown.find")
+local editing = require("org_markdown.utils.editing")
 local quick_note = require("org_markdown.quick_note")
 
 local M = {}
@@ -33,8 +34,8 @@ function M.register()
 		desc = "OrgMarkdown: Agenda Task View",
 	})
 
-	vim.api.nvim_create_user_command("MarkdownAgenda", agenda.show_combined, {
-		desc = "OrgMarkdown: Agenda Combined View",
+	vim.api.nvim_create_user_command("MarkdownAgenda", agenda.show_tabbed_agenda, {
+		desc = "OrgMarkdown: Agenda Tabbed View",
 	})
 
 	vim.api.nvim_create_user_command("MarkdownFindFile", find.open_file_picker, {
@@ -72,6 +73,16 @@ function M.register()
 		silent = true,
 	})
 
+	vim.api.nvim_create_augroup("OrgMarkdownEditing", { clear = true })
+	vim.api.nvim_create_autocmd("FileType", {
+		group = "OrgMarkdownEditing",
+		pattern = { "markdown", "markdown.mdx", "quarto" }, -- add/trim as you like
+		callback = function(args)
+			-- Only activate when you want (e.g., not in help buffers, etc.)
+			-- if vim.bo[args.buf].buftype ~= "" then return end
+			editing.setup_editing_keybinds(args.buf)
+		end,
+	})
 	-- vim.keymap.set("n", keymaps.refile_to_heading, "<cmd>MarkdownRefileHeading<CR>", {
 	-- 	desc = "OrgMarkdown: Refile to heading",
 	-- 	silent = true,
@@ -99,6 +110,40 @@ function M.register()
 				})
 			end
 		end
+	end
+
+	-- Register sync commands dynamically
+	local sync_manager = require("org_markdown.sync.manager")
+
+	-- Register sync all command
+	vim.api.nvim_create_user_command(config.sync.sync_all_command or "MarkdownSyncAll", function()
+		sync_manager.sync_all()
+	end, { desc = "OrgMarkdown: Sync all enabled plugins" })
+
+	-- Register per-plugin commands
+	for plugin_name, plugin in pairs(sync_manager.plugins) do
+		local cmd_name = plugin.command_name or ("MarkdownSync" .. name_to_pascal(plugin_name))
+
+		vim.api.nvim_create_user_command(cmd_name, function()
+			sync_manager.sync_plugin(plugin_name)
+		end, {
+			desc = "OrgMarkdown: " .. (plugin.description or ("Sync " .. plugin_name)),
+		})
+
+		-- Register keymap if specified
+		if plugin.keymap then
+			vim.keymap.set("n", plugin.keymap, function()
+				sync_manager.sync_plugin(plugin_name)
+			end, { desc = "OrgMarkdown: Sync " .. plugin_name, silent = true })
+		end
+	end
+
+	-- Register sync all keymap
+	if keymaps.sync_all then
+		vim.keymap.set("n", keymaps.sync_all, "<cmd>" .. (config.sync.sync_all_command or "MarkdownSyncAll") .. "<CR>", {
+			desc = "OrgMarkdown: Sync All",
+			silent = true,
+		})
 	end
 end
 return M

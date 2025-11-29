@@ -19,38 +19,64 @@ function M.pick(items, opts)
 end
 
 function M._pick_snacks(items, opts)
-	local snacks = require("snacks")
-	snacks.picker.pick({
-		source = opts.kind or "item",
-		prompt = opts.prompt or "Select item",
+	local Snacks = require("snacks")
+	opts = opts or {}
 
-		finder = function()
-			return vim.tbl_map(function(item)
-				return {
-					text = opts.format_item and opts.format_item(item) or tostring(item),
-					value = item,
-					file = item.file, -- optional for snacks preview
-				}
-			end, items)
+	local function row_from(item)
+		-- decide what the matcher should search
+		local text = item.text
+			or (type(item.value) == "string" and item.value)
+			or item.file
+			or item.name
+			or item.label
+			or item.title
+			or tostring(item)
+		if type(text) ~= "string" then
+			text = tostring(text)
+		end
+		return { text = text, value = item, file = item.file }
+	end
+
+	local rows = {}
+	for _, it in ipairs(items) do
+		rows[#rows + 1] = row_from(it)
+	end
+
+	return Snacks.picker.pick({
+		title = opts.prompt or "Select item",
+
+		-- Give the picker a static list; fuzzy matching happens on `text`.
+		items = rows,
+
+		-- purely visual
+		format = function(entry)
+			if opts.format_item then
+				local ok, out = pcall(opts.format_item, entry.value)
+				if ok and out ~= nil then
+					return out
+				end
+			end
+			return entry.text
 		end,
 
-		confirm = function(picker, item)
+		-- be defensive: entry can be nil
+		confirm = function(picker, entry)
+			if not entry then
+				if opts.debug then
+					print("[snacks-pick debug] confirm: nil entry")
+				end
+				picker:close()
+				return
+			end
 			picker:close()
 			if opts.on_confirm then
-				opts.on_confirm(item.value)
+				pcall(opts.on_confirm, entry.value)
 			end
-		end,
-
-		format = function(item)
-			if opts.format_item then
-				return opts.format_item(item.value)
-			end
-			return { tostring(item.value), "Normal" }
 		end,
 
 		preview = function(ctx)
-			if ctx.item.file then
-				snacks.picker.preview.file(ctx)
+			if ctx.item and ctx.item.file then
+				Snacks.picker.preview.file(ctx)
 			else
 				ctx.preview:reset()
 				ctx.preview:set_title("No preview")

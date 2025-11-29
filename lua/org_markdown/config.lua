@@ -23,14 +23,22 @@ local M = {
 	-- picker = "telescope",
 	refile_paths = { "~/notes" },
 	quick_note_file = "~/notes/quick_notes/",
+	sync = {
+		enabled = true,
+		plugins = {
+			-- Plugins will register their default config here
+		},
+		sync_all_command = "MarkdownSyncAll",
+	},
 	keymaps = {
-		capture = "<leader>onn",
-		agenda = "<leader>onv",
-		find_file = "<leader>onf",
-		find_heading = "<leader>onh",
-		refile_to_file = "<leader>onrf",
-		refile_to_heading = "<leader>onrh",
+		capture = "<leader>oc",
+		agenda = "<leader>oa",
+		find_file = "<leader>of",
+		find_heading = "<leader>oh",
+		refile_to_file = "<leader>orf",
+		refile_to_heading = "<leader>orh",
 		open_quick_note = "<leader>z",
+		sync_all = "<leader>oS",
 	},
 	checkbox_states = {
 		" ",

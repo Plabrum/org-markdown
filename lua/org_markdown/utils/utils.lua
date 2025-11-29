@@ -80,17 +80,107 @@ function M.set_cursor(win, row, col, mode)
 	end
 end
 
+-- Auto-save function for quick notes
+local function setup_quick_note_autosave(buf, filepath)
+	local augroup = vim.api.nvim_create_augroup("QuickNoteAutoSave_" .. buf, { clear = true })
+
+	-- Auto-save on CursorHold (when user stops typing)
+	vim.api.nvim_create_autocmd("CursorHold", {
+		group = augroup,
+		buffer = buf,
+		callback = function()
+			if vim.api.nvim_buf_is_valid(buf) and vim.bo[buf].modified then
+				local dir = vim.fn.fnamemodify(filepath, ":h")
+				vim.fn.mkdir(dir, "p")
+
+				local success, err = pcall(function()
+					vim.api.nvim_buf_call(buf, function()
+						vim.cmd("silent! write")
+					end)
+				end)
+
+				if success then
+					vim.notify("Auto-saved: " .. vim.fn.fnamemodify(filepath, ":t"), vim.log.levels.INFO)
+				else
+					vim.notify("Auto-save failed: " .. tostring(err), vim.log.levels.ERROR)
+				end
+			end
+		end,
+	})
+
+	-- Auto-save on InsertLeave (silent)
+	vim.api.nvim_create_autocmd("InsertLeave", {
+		group = augroup,
+		buffer = buf,
+		callback = function()
+			if vim.api.nvim_buf_is_valid(buf) and vim.bo[buf].modified then
+				local dir = vim.fn.fnamemodify(filepath, ":h")
+				vim.fn.mkdir(dir, "p")
+
+				pcall(function()
+					vim.api.nvim_buf_call(buf, function()
+						vim.cmd("silent! write")
+					end)
+				end)
+			end
+		end,
+	})
+
+	-- Cleanup on buffer delete
+	vim.api.nvim_create_autocmd("BufDelete", {
+		group = augroup,
+		buffer = buf,
+		callback = function()
+			pcall(vim.api.nvim_del_augroup_by_name, "QuickNoteAutoSave_" .. buf)
+		end,
+	})
+end
+
 local function create_buffer(opts)
-	local buf = vim.api.nvim_create_buf(false, true)
-	vim.bo[buf].filetype = opts.filetype or "markdown"
-	vim.bo[buf].buftype = opts.buftype or "acwrite"
-	vim.bo[buf].bufhidden = opts.bufhidden or "wipe"
-	vim.bo[buf].modifiable = true
-	vim.bo[buf].swapfile = false
-	if opts.title then
-		vim.api.nvim_buf_set_name(buf, opts.title)
+	local buf
+
+	-- For quick notes (when filepath is provided), use a normal file buffer
+	if opts.filepath then
+		-- Check if buffer already exists for this file
+		local existing_buf = vim.fn.bufnr(opts.filepath)
+		if existing_buf ~= -1 and vim.api.nvim_buf_is_loaded(existing_buf) then
+			return existing_buf
+		end
+
+		-- Create a normal file buffer
+		buf = vim.api.nvim_create_buf(false, false)
+		vim.api.nvim_buf_set_name(buf, opts.filepath)
+
+		-- Load file content if it exists
+		if vim.loop.fs_stat(opts.filepath) then
+			vim.api.nvim_buf_call(buf, function()
+				vim.cmd("edit! " .. vim.fn.fnameescape(opts.filepath))
+			end)
+		end
+
+		-- Normal file buffer settings
+		vim.bo[buf].filetype = opts.filetype or "markdown"
+		vim.bo[buf].buftype = "" -- Normal file buffer
+		vim.bo[buf].bufhidden = "hide" -- Keep buffer alive
+		vim.bo[buf].modifiable = true
+		vim.bo[buf].swapfile = true -- Enable crash recovery
+
+		-- Set up auto-save
+		setup_quick_note_autosave(buf, opts.filepath)
 	else
-		vim.api.nvim_buf_set_name(buf, "org-markdown")
+		-- For other windows (capture, agenda), keep the acwrite behavior
+		buf = vim.api.nvim_create_buf(false, true)
+		vim.bo[buf].filetype = opts.filetype or "markdown"
+		vim.bo[buf].buftype = opts.buftype or "acwrite"
+		vim.bo[buf].bufhidden = opts.bufhidden or "wipe"
+		vim.bo[buf].modifiable = true
+		vim.bo[buf].swapfile = false
+
+		if opts.title then
+			vim.api.nvim_buf_set_name(buf, opts.title)
+		else
+			vim.api.nvim_buf_set_name(buf, "org-markdown")
+		end
 	end
 
 	editing.setup_editing_keybinds(buf)
@@ -118,23 +208,53 @@ end
 
 local function set_close_keys(buf, win, opts)
 	local function try_close(close_key)
-		if opts.on_close then
-			opts.on_close(buf, win, close_key)
-		end
+		-- For quick note buffers (normal file buffers), save before closing
+		if vim.bo[buf].buftype == "" and vim.api.nvim_buf_is_valid(buf) then
+			-- This is a normal file buffer (quick note)
+			if vim.bo[buf].modified then
+				local filepath = vim.api.nvim_buf_get_name(buf)
+				local dir = vim.fn.fnamemodify(filepath, ":h")
+				vim.fn.mkdir(dir, "p")
 
-		if opts.persist_window then
-			if opts._previous_buf and vim.api.nvim_buf_is_valid(opts._previous_buf) then
-				vim.bo[buf].modified = false
-				vim.api.nvim_win_set_buf(win, opts._previous_buf)
+				pcall(function()
+					vim.api.nvim_buf_call(buf, function()
+						vim.cmd("silent! write")
+					end)
+				end)
 			end
+
+			-- Close window or switch buffer
+			if opts.persist_window then
+				if opts._previous_buf and vim.api.nvim_buf_is_valid(opts._previous_buf) then
+					vim.api.nvim_win_set_buf(win, opts._previous_buf)
+				end
+			else
+				if vim.api.nvim_win_is_valid(win) then
+					vim.api.nvim_win_close(win, true)
+				end
+			end
+
+			-- Don't delete the buffer - it will be hidden (bufhidden=hide)
 		else
-			if vim.api.nvim_win_is_valid(win) then
-				vim.api.nvim_win_close(win, true)
+			-- Original behavior for acwrite buffers (captures, agenda)
+			if opts.on_close then
+				opts.on_close(buf, win, close_key)
 			end
-		end
 
-		if vim.api.nvim_buf_is_valid(buf) and #vim.fn.win_findbuf(buf) == 0 then
-			vim.api.nvim_buf_delete(buf, { force = true })
+			if opts.persist_window then
+				if opts._previous_buf and vim.api.nvim_buf_is_valid(opts._previous_buf) then
+					vim.bo[buf].modified = false
+					vim.api.nvim_win_set_buf(win, opts._previous_buf)
+				end
+			else
+				if vim.api.nvim_win_is_valid(win) then
+					vim.api.nvim_win_close(win, true)
+				end
+			end
+
+			if vim.api.nvim_buf_is_valid(buf) and #vim.fn.win_findbuf(buf) == 0 then
+				vim.api.nvim_buf_delete(buf, { force = true })
+			end
 		end
 	end
 
@@ -150,15 +270,19 @@ local function set_close_keys(buf, win, opts)
 	-- 	callback = try_close,
 	-- })
 	--
-	vim.api.nvim_create_autocmd("BufWriteCmd", {
-		buffer = buf,
-		callback = function()
-			if opts.on_close then
-				opts.on_close(buf)
-			end
-			vim.bo[buf].modified = false
-		end,
-	})
+	-- Only set BufWriteCmd for acwrite buffers
+	-- Normal file buffers (quick notes) use standard :write command
+	if vim.bo[buf].buftype == "acwrite" then
+		vim.api.nvim_create_autocmd("BufWriteCmd", {
+			buffer = buf,
+			callback = function()
+				if opts.on_close then
+					opts.on_close(buf)
+				end
+				vim.bo[buf].modified = false
+			end,
+		})
+	end
 
 	vim.api.nvim_create_autocmd("VimLeavePre", {
 		callback = try_close,
@@ -211,8 +335,9 @@ end
 -- Floating window
 local function create_float_window(buf, opts)
 	local fill = opts.fill or 0.6
+	local fill_height = opts.fill_height or fill
 	local width = math.floor(vim.o.columns * fill)
-	local height = math.floor(vim.o.lines * fill)
+	local height = math.floor(vim.o.lines * fill_height)
 	local row = math.floor((vim.o.lines - height) / 2)
 	local col = math.floor((vim.o.columns - width) / 2)
 
@@ -411,7 +536,12 @@ end
 function M.insert_under_heading(filepath, heading_text, content_lines)
 	local lines = M.read_lines(filepath)
 
-	local start_idx, base_level, insert_idx = M.find_heading_range(lines, heading_text)
+	local start_idx, base_level, insert_idx
+
+	-- Only try to find heading if one is specified
+	if heading_text and heading_text ~= "" then
+		start_idx, base_level, insert_idx = M.find_heading_range(lines, heading_text)
+	end
 
 	if start_idx and insert_idx then
 		local adjusted_content = M.adjust_heading_levels(content_lines, base_level)
@@ -421,9 +551,16 @@ function M.insert_under_heading(filepath, heading_text, content_lines)
 			table.insert(lines, insert_idx, adjusted_content[i])
 		end
 	else
-		-- Heading not found — add it at EOF
-		table.insert(lines, "")
-		table.insert(lines, "# " .. heading_text)
+		-- Heading not found or not specified — add content at EOF
+		if #lines > 0 and lines[#lines] ~= "" then
+			table.insert(lines, "")
+		end
+
+		-- Only add heading if one was specified
+		if heading_text and heading_text ~= "" then
+			table.insert(lines, "# " .. heading_text)
+		end
+
 		vim.list_extend(lines, content_lines)
 	end
 
