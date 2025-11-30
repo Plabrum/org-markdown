@@ -72,8 +72,8 @@ df.locale = Locale(identifier: "en_US_POSIX")
 df.dateFormat = "EEEE, MMMM d, yyyy 'at' h:mm:ss a"
 
 // -----------------------------------------------------------------------------
-// Output events in pipe-delimited format matching AppleScript output
-// Format: CALENDAR|TITLE|START|END|ALLDAY
+// Output events in pipe-delimited format with extended fields
+// Format: CALENDAR|TITLE|START|END|ALLDAY|LOCATION|URL|NOTES|UID
 // -----------------------------------------------------------------------------
 for ev in events {
     let calTitle = ev.calendar?.title ?? "Unknown"
@@ -82,5 +82,16 @@ for ev in events {
     let end = df.string(from: ev.endDate)
     let allDay = ev.isAllDay ? "true" : "false"
 
-    print("\(calTitle)|\(title)|\(start)|\(end)|\(allDay)")
+    // Extended fields (Phase 3)
+    let location = ev.location ?? ""
+    let url = ev.url?.absoluteString ?? ""
+    let notes = ev.notes ?? ""
+    let uid = ev.calendarItemIdentifier
+
+    // Escape pipe characters in text fields to prevent parsing issues
+    let escapedTitle = title.replacingOccurrences(of: "|", with: "\\|")
+    let escapedLocation = location.replacingOccurrences(of: "|", with: "\\|")
+    let escapedNotes = notes.replacingOccurrences(of: "|", with: "\\|")
+
+    print("\(calTitle)|\(escapedTitle)|\(start)|\(end)|\(allDay)|\(escapedLocation)|\(url)|\(escapedNotes)|\(uid)")
 }

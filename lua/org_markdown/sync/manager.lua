@@ -13,6 +13,154 @@ local sync_locks = {}
 local auto_sync_timers = {}
 
 -- ============================================================================
+-- EVENT VALIDATION SCHEMA
+-- ============================================================================
+
+local EVENT_SCHEMA = {
+	-- Required fields
+	title = {
+		type = "string",
+		required = true,
+		validate = function(v)
+			return v and v ~= ""
+		end,
+		error_msg = "title must be non-empty string",
+	},
+
+	start_date = {
+		type = "table",
+		required = true,
+		validate = function(v)
+			return v and v.year and v.month and v.day and v.day_name
+		end,
+		error_msg = "start_date must have year, month, day, day_name",
+	},
+
+	all_day = {
+		type = "boolean",
+		required = true,
+		error_msg = "all_day must be boolean",
+	},
+
+	-- Optional fields
+	end_date = {
+		type = "table",
+		required = false,
+		validate = function(v)
+			return not v or (v.year and v.month and v.day)
+		end,
+		error_msg = "end_date must have year, month, day if provided",
+	},
+
+	start_time = {
+		type = "string",
+		required = false,
+		validate = function(v)
+			return not v or v:match("^%d%d:%d%d$")
+		end,
+		error_msg = "start_time must be HH:MM format",
+	},
+
+	end_time = {
+		type = "string",
+		required = false,
+		validate = function(v)
+			return not v or v:match("^%d%d:%d%d$")
+		end,
+		error_msg = "end_time must be HH:MM format",
+	},
+
+	tags = {
+		type = "table",
+		required = false,
+		validate = function(v)
+			return not v or vim.tbl_islist(v)
+		end,
+		error_msg = "tags must be array of strings",
+	},
+
+	body = {
+		type = "string",
+		required = false,
+	},
+
+	-- Extended fields (Phase 3)
+	id = { type = "string", required = false },
+	source_url = { type = "string", required = false },
+	location = { type = "string", required = false },
+	description = { type = "string", required = false },
+	status = {
+		type = "string",
+		required = false,
+		validate = function(v)
+			local valid_states = { "TODO", "IN_PROGRESS", "WAITING", "DONE", "CANCELLED", "BLOCKED" }
+			return not v or vim.tbl_contains(valid_states, v)
+		end,
+		error_msg = "status must be valid state",
+	},
+	priority = {
+		type = "string",
+		required = false,
+		validate = function(v)
+			return not v or v:match("^[A-Z]$")
+		end,
+		error_msg = "priority must be single uppercase letter",
+	},
+}
+
+--- Validate an event against the schema
+--- @param event table Event to validate
+--- @param plugin_name string Plugin name (for error messages)
+--- @return boolean, table|nil, string|nil Success, errors array, formatted error message
+local function validate_event(event, plugin_name)
+	if not event or type(event) ~= "table" then
+		return false, { "Event must be a table" }, "[" .. plugin_name .. "] Event must be a table"
+	end
+
+	local errors = {}
+
+	for field_name, schema in pairs(EVENT_SCHEMA) do
+		local value = event[field_name]
+
+		-- Check required
+		if schema.required and value == nil then
+			table.insert(errors, field_name .. " is required")
+			goto continue
+		end
+
+		-- Skip further validation if optional and not provided
+		if not schema.required and value == nil then
+			goto continue
+		end
+
+		-- Check type
+		if type(value) ~= schema.type then
+			table.insert(errors, string.format("%s must be %s, got %s", field_name, schema.type, type(value)))
+			goto continue
+		end
+
+		-- Custom validation
+		if schema.validate and not schema.validate(value) then
+			table.insert(errors, schema.error_msg or field_name .. " is invalid")
+		end
+
+		::continue::
+	end
+
+	if #errors > 0 then
+		local err_msg = string.format(
+			"[%s] Invalid event '%s':\n  - %s",
+			plugin_name,
+			event.title or "(no title)",
+			table.concat(errors, "\n  - ")
+		)
+		return false, errors, err_msg
+	end
+
+	return true, nil, nil
+end
+
+-- ============================================================================
 -- PLUGIN REGISTRATION
 -- ============================================================================
 
@@ -136,8 +284,23 @@ local function format_event_as_markdown(event, plugin_config)
 	local lines = {}
 	local heading_level = plugin_config.heading_level or 1
 
-	-- Build heading with date on the same line for agenda compatibility
-	local heading = string.rep("#", heading_level) .. " " .. event.title
+	-- Build heading parts
+	local heading_parts = { string.rep("#", heading_level) }
+
+	-- Add status if present
+	if event.status then
+		table.insert(heading_parts, event.status)
+	end
+
+	-- Add priority if present
+	if event.priority then
+		table.insert(heading_parts, "[#" .. event.priority .. "]")
+	end
+
+	-- Add title
+	table.insert(heading_parts, event.title)
+
+	local heading = table.concat(heading_parts, " ")
 
 	-- Add date
 	local date_str = format_date_range(event)
@@ -151,8 +314,33 @@ local function format_event_as_markdown(event, plugin_config)
 
 	table.insert(lines, heading)
 
-	-- Optional body
-	if event.body and event.body ~= "" then
+	-- Add metadata section
+	local metadata = {}
+
+	if event.location then
+		table.insert(metadata, "**Location:** " .. event.location)
+	end
+
+	if event.source_url then
+		table.insert(metadata, "**Source:** " .. event.source_url)
+	end
+
+	if event.id then
+		table.insert(metadata, "**ID:** `" .. event.id .. "`")
+	end
+
+	if #metadata > 0 then
+		table.insert(lines, "")
+		for _, line in ipairs(metadata) do
+			table.insert(lines, line)
+		end
+	end
+
+	-- Add description/body
+	if event.description and event.description ~= "" then
+		table.insert(lines, "")
+		table.insert(lines, event.description)
+	elseif event.body and event.body ~= "" then
 		table.insert(lines, "")
 		table.insert(lines, event.body)
 	end
@@ -421,12 +609,55 @@ function M.sync_plugin(plugin_name)
 	local events = result.events or {}
 	local stats = result.stats or {}
 
+	if not events or #events == 0 then
+		vim.notify("[" .. plugin_name .. "] No events returned", vim.log.levels.WARN)
+		sync_locks[plugin_name] = false
+		return
+	end
+
+	-- Validate each event
+	local valid_events = {}
+	local invalid_count = 0
+
+	for i, event in ipairs(events) do
+		local valid, errors, err_msg = validate_event(event, plugin_name)
+
+		if valid then
+			table.insert(valid_events, event)
+		else
+			invalid_count = invalid_count + 1
+
+			-- Log first few errors in detail
+			if invalid_count <= 3 then
+				vim.notify(err_msg, vim.log.levels.WARN)
+			end
+		end
+	end
+
+	if invalid_count > 3 then
+		vim.notify(
+			string.format("[%s] %d more events invalid (not shown)", plugin_name, invalid_count - 3),
+			vim.log.levels.WARN
+		)
+	end
+
+	-- Continue with valid events only
+	if #valid_events == 0 then
+		vim.notify("[" .. plugin_name .. "] No valid events to sync", vim.log.levels.ERROR)
+		sync_locks[plugin_name] = false
+		return
+	end
+
 	-- Write to sync file
-	write_sync_file(events, plugin_name, plugin_config, stats)
+	write_sync_file(valid_events, plugin_name, plugin_config, stats)
 
 	-- Success notification
-	local count = stats.count or #events
-	vim.notify(string.format("Synced %d events from %s", count, plugin.description or plugin_name), vim.log.levels.INFO)
+	local count = stats.count or #valid_events
+	local msg = string.format("Synced %d events from %s", count, plugin.description or plugin_name)
+	if invalid_count > 0 then
+		msg = msg .. string.format(" (%d invalid, skipped)", invalid_count)
+	end
+	vim.notify(msg, vim.log.levels.INFO)
 
 	-- Clear lock
 	sync_locks[plugin_name] = false

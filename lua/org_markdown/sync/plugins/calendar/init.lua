@@ -187,14 +187,20 @@ local function parse_applescript_output(output)
 
 	for _, line in ipairs(output) do
 		if line ~= "" then
-			-- Format: CALENDAR|TITLE|START|END|ALLDAY
+			-- Format: CALENDAR|TITLE|START|END|ALLDAY|LOCATION|URL|NOTES|UID
 			local parts = vim.split(line, "|", { plain = true })
 			if #parts >= 5 then
 				local calendar = parts[1]
-				local title = parts[2]
+				local title = parts[2]:gsub("\\|", "|") -- Unescape pipes
 				local start_raw = parts[3]
 				local end_raw = parts[4]
 				local all_day_str = parts[5]
+
+				-- Extended fields (may not be present in older output)
+				local location = parts[6] and parts[6] ~= "" and parts[6]:gsub("\\|", "|") or nil
+				local url = parts[7] and parts[7] ~= "" and parts[7] or nil
+				local notes = parts[8] and parts[8] ~= "" and parts[8]:gsub("\\|", "|") or nil
+				local uid = parts[9] and parts[9] ~= "" and parts[9] or nil
 
 				local start_date = parse_macos_date(start_raw)
 				local end_date = parse_macos_date(end_raw)
@@ -206,6 +212,10 @@ local function parse_applescript_output(output)
 						start = start_date,
 						end_date = end_date,
 						all_day = all_day_str == "true",
+						location = location,
+						url = url,
+						notes = notes,
+						uid = uid,
 					}
 					table.insert(events, event)
 				end
@@ -326,6 +336,12 @@ function M.sync()
 			end_time = raw.end_date and raw.end_date.time,
 			all_day = raw.all_day,
 			tags = { sanitize_tag(raw.calendar) },
+
+			-- Extended fields (Phase 3)
+			id = raw.uid,
+			location = raw.location,
+			source_url = raw.url,
+			body = raw.notes,
 		}
 		table.insert(events, event)
 	end
