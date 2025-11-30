@@ -85,7 +85,6 @@ local EVENT_SCHEMA = {
 		required = false,
 	},
 
-	-- Extended fields (Phase 3)
 	id = { type = "string", required = false },
 	source_url = { type = "string", required = false },
 	location = { type = "string", required = false },

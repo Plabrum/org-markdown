@@ -291,7 +291,6 @@ function M.sync()
 			all_day = raw.all_day,
 			tags = { sanitize_tag(raw.calendar) },
 
-			-- Extended fields (Phase 3)
 			id = raw.uid,
 			location = raw.location,
 			source_url = raw.url,

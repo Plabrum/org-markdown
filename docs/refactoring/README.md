@@ -47,7 +47,7 @@ Work through phases in order:
 4. **[Phase 3: Sync System Hardening](04-phase-3-sync.md)** (Days 21-28)
    - Add event validation
    - Expand event model
-   - Plugin state persistence
+   - ~~Plugin state persistence~~ (removed as premature optimization)
    - Complete documentation
 
 ### 4. Git Workflow
@@ -105,7 +105,7 @@ git push origin refactor/phase-N-name
 
 **Phase 3:**
 - `lua/org_markdown/sync/manager.lua`
-- `lua/org_markdown/sync/state.lua` (new)
+- ~~`lua/org_markdown/sync/state.lua` (new)~~ - removed as premature
 - `lua/org_markdown/sync/PLUGIN_INTERFACE.md` (new)
 
 ## Getting Help

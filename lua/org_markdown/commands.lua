@@ -146,32 +146,5 @@ function M.register()
 			silent = true,
 		})
 	end
-
-	-- Register debug state command
-	vim.api.nvim_create_user_command("MarkdownSyncDebugState", function()
-		local state = require("org_markdown.sync.state")
-		local all_states = state.get_all_states()
-
-		local lines = { "# Sync Plugin States", "" }
-		lines[#lines + 1] = "**State file:** `" .. state.get_state_file_path() .. "`"
-		lines[#lines + 1] = ""
-
-		if vim.tbl_count(all_states) == 0 then
-			lines[#lines + 1] = "*No plugin state saved yet*"
-		else
-			for plugin_name, plugin_state in pairs(all_states) do
-				lines[#lines + 1] = "## " .. plugin_name
-				for k, v in pairs(plugin_state) do
-					lines[#lines + 1] = "- **" .. k .. ":** " .. vim.inspect(v)
-				end
-				lines[#lines + 1] = ""
-			end
-		end
-
-		local buf = vim.api.nvim_create_buf(false, true)
-		vim.api.nvim_buf_set_lines(buf, 0, -1, false, lines)
-		vim.api.nvim_set_option_value("filetype", "markdown", { buf = buf })
-		vim.api.nvim_set_current_buf(buf)
-	end, { desc = "OrgMarkdown: Debug sync plugin states" })
 end
 return M

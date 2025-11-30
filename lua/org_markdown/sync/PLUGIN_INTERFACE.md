@@ -233,36 +233,15 @@ All events are automatically validated before formatting. Invalid events are log
   - priority must be single uppercase letter
 ```
 
-## State Persistence
+## State Persistence (Future)
 
-Save state between syncs for incremental updates.
+**Note**: State persistence is not currently implemented. If your plugin needs to track state between syncs (e.g., API cursors, rate limits, last sync timestamps), you can:
 
-```lua
-function M.sync()
-    local state = require("org_markdown.sync.state")
+1. Store state in plugin-specific files (e.g., `vim.fn.stdpath("data") .. "/myplugin-state.json"`)
+2. Use in-memory caching for session-based state
+3. Propose a state persistence API if there's demand from multiple plugins
 
-    -- Load previous state
-    local last_sync = state.load_plugin_state(M.name)
-    local since = last_sync.last_cursor or "beginning"
-
-    -- Fetch incrementally
-    local events, next_cursor = fetch_events_since(since)
-
-    -- Save new state
-    state.save_plugin_state(M.name, {
-        last_cursor = next_cursor,
-        last_sync_time = os.time(),
-        event_count = #events,
-    })
-
-    return { events = events }
-end
-```
-
-**Debug state:**
-```vim
-:MarkdownSyncDebugState
-```
+For most use cases, stateless syncs work well. Only add complexity when you have a proven need.
 
 ## Configuration
 
@@ -421,9 +400,9 @@ end
 
 1. **Error Handling**: Always wrap API calls in pcall
 2. **Validation**: Let the manager validate events (don't duplicate)
-3. **Incremental Sync**: Use state persistence for large data sets
-4. **Rate Limiting**: Respect API rate limits, save tokens in state
-5. **User Feedback**: Return meaningful stats
+3. **Simplicity First**: Start with stateless syncs - add complexity only when needed
+4. **Rate Limiting**: Respect API rate limits, handle 429 responses gracefully
+5. **User Feedback**: Return meaningful stats in the stats table
 6. **Testing**: Write tests for your sync function
 
 ## Publishing

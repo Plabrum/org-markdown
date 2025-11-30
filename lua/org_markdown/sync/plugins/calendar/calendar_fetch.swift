@@ -82,7 +82,6 @@ for ev in events {
     let end = df.string(from: ev.endDate)
     let allDay = ev.isAllDay ? "true" : "false"
 
-    // Extended fields (Phase 3)
     let location = ev.location ?? ""
     let url = ev.url?.absoluteString ?? ""
     let notes = ev.notes ?? ""
