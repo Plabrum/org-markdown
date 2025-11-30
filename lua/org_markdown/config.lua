@@ -67,10 +67,10 @@ local M = {
 				display = { format = "blocks" },
 			},
 			calendar_compact = {
-				title = "Calendar Compact Timeline (14 days)",
+				title = "Calendar Compact Timeline (7 days)",
 				source = "calendar",
 				filters = {
-					date_range = { days = 14, offset = 0 },
+					date_range = { days = 10, offset = 0 },
 				},
 				sort = {
 					by = "date",
@@ -131,14 +131,41 @@ local M = {
 	-- },
 }
 
+-- Non-mutating merge that creates a fresh table
 local function merge_tables(default, user)
-	for k, v in pairs(user) do
-		if type(v) == "table" and type(default[k]) == "table" then
-			merge_tables(default[k], v)
+	local result = {}
+
+	-- First, copy all from default
+	for k, v in pairs(default) do
+		if type(v) == "table" then
+			if vim.tbl_islist(v) then
+				-- Arrays: deep copy (will be replaced if user provides)
+				result[k] = vim.deepcopy(v)
+			else
+				-- Objects: deep copy (will be merged if user provides)
+				result[k] = vim.deepcopy(v)
+			end
 		else
-			default[k] = v
+			result[k] = v
 		end
 	end
+
+	-- Then, apply user overrides
+	for k, v in pairs(user) do
+		if type(v) == "table" and type(result[k]) == "table" then
+			if vim.tbl_islist(v) then
+				-- Arrays: REPLACE entirely
+				result[k] = vim.deepcopy(v)
+			else
+				-- Objects: MERGE recursively
+				result[k] = merge_tables(result[k], v)
+			end
+		else
+			result[k] = v
+		end
+	end
+
+	return result
 end
 
 local function validate_view(view_id, view_def)
@@ -171,15 +198,50 @@ local function validate_view(view_id, view_def)
 	end
 end
 
+-- Store immutable defaults
+M._defaults = vim.deepcopy(M)
+
+-- Clear all config fields from M (they'll be accessed via metatable)
+local keys_to_clear = {}
+for k in pairs(M) do
+	if k ~= "_defaults" then
+		table.insert(keys_to_clear, k)
+	end
+end
+for _, k in ipairs(keys_to_clear) do
+	M[k] = nil
+end
+
+-- Runtime config (created fresh on each setup)
+M._runtime = nil
+
 function M.setup(user_config)
-	merge_tables(M, user_config or {})
+	-- Create fresh runtime config
+	M._runtime = merge_tables(M._defaults, user_config or {})
 
 	-- Validate views after merging
-	if M.agendas and M.agendas.views then
-		for view_id, view_def in pairs(M.agendas.views) do
+	if M._runtime.agendas and M._runtime.agendas.views then
+		for view_id, view_def in pairs(M._runtime.agendas.views) do
 			validate_view(view_id, view_def)
 		end
 	end
+
+	return M._runtime
 end
+
+-- Allow access via config.field (reads from runtime)
+setmetatable(M, {
+	__index = function(t, k)
+		-- Allow direct access to special keys
+		if k == "_defaults" or k == "_runtime" or k == "setup" then
+			return rawget(t, k)
+		end
+		-- Fall back to runtime, then defaults
+		if t._runtime and t._runtime[k] ~= nil then
+			return t._runtime[k]
+		end
+		return t._defaults[k]
+	end,
+})
 
 return M

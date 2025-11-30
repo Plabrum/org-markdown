@@ -71,11 +71,13 @@ function M.assert_buffer_equals(buf, expected)
 	local expected_lines = type(expected) == "table" and expected or vim.split(expected, "\n")
 
 	if not vim.deep_equal(actual, expected_lines) then
-		error(string.format(
-			"Buffer mismatch:\nExpected:\n%s\n\nActual:\n%s",
-			table.concat(expected_lines, "\n"),
-			table.concat(actual, "\n")
-		))
+		error(
+			string.format(
+				"Buffer mismatch:\nExpected:\n%s\n\nActual:\n%s",
+				table.concat(expected_lines, "\n"),
+				table.concat(actual, "\n")
+			)
+		)
 	end
 end
 

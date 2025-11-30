@@ -9,6 +9,17 @@ local valid_states = {
 	BLOCKED = true,
 }
 
+-- Pre-defined patterns for single-pass parsing
+local PATTERNS = {
+	heading_prefix = "^(#+)%s+",
+	state = "^([A-Z_]+)%s+",
+	priority = "%[#([A-Z])%]",
+	tracked_date = "<([^>]+)>",
+	untracked_date = "%[([^%]]+)%]",
+	time = "(%d%d):(%d%d)",
+	tag_block = ":([%w_-]+):",
+}
+
 function M.parse_state(line)
 	-- Match the full word after hash+space
 	local candidate = line:match("^#+%s+([%u_]+)")
@@ -19,8 +30,8 @@ function M.parse_state(line)
 end
 
 function M.parse_priority(line)
-	local raw = line:match("%[%#(%u)%]")
-	return raw and "#" .. raw or nil
+	-- Return just the letter, not "#A"
+	return line:match("%[%#(%u)%]")
 end
 
 function M.parse_text(line)
@@ -92,17 +103,20 @@ end
 --- Expected format: `# STATE [#P] text :tag1:tag2:`
 ---
 --- @param line string The line to parse (e.g., "# TODO [#A] Finish task :urgent:")
---- @return table|nil state The task state ("TODO" or "IN_PROGRESS"), or nil if invalid
+--- @return table|nil Parsed headline data with priority as just letter (e.g., "A" not "#A")
 function M.parse_headline(line)
-	if not line:match("^#+%s") then
+	-- Quick check: is it a heading?
+	if not line:match(PATTERNS.heading_prefix) then
 		return nil
 	end
+
+	-- Extract all components
 	local tracked, untracked = M.extract_date(line)
 	local start_time, end_time = M.extract_times(line)
 
 	return {
 		state = M.parse_state(line),
-		priority = M.parse_priority(line),
+		priority = M.parse_priority(line), -- Now returns just letter, not "#A"
 		tracked = tracked,
 		untracked = untracked,
 		start_time = start_time,
@@ -135,6 +149,23 @@ function M.escape_marker(marker, escape_chars)
 	end
 
 	return table.concat(result)
+end
+
+-- Validate time string (HH:MM format)
+function M.validate_time(time_str)
+	if not time_str or type(time_str) ~= "string" then
+		return false
+	end
+
+	local h, m = time_str:match("^(%d%d):(%d%d)$")
+	if not h then
+		return false
+	end
+
+	local hour = tonumber(h)
+	local min = tonumber(m)
+
+	return hour >= 0 and hour < 24 and min >= 0 and min < 60
 end
 
 return M

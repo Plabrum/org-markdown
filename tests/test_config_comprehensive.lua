@@ -41,18 +41,17 @@ T["merge"]["allows multiple setups"] = function()
 	MiniTest.expect.equality(second_name, "Second")
 end
 
-T["merge"]["merges arrays (current behavior)"] = function()
+T["merge"]["replaces arrays instead of merging"] = function()
 	-- Default checkbox_states = {" ", "-", "X"}
 	config.setup({
 		checkbox_states = { " ", "x" }, -- User provides 2 states
 	})
 
 	local states = config.checkbox_states
-	-- Current implementation merges arrays, resulting in {" ", "x", "X"}
-	MiniTest.expect.equality(#states, 3, "Currently merges, doesn't replace")
+	-- Arrays should be REPLACED, not merged
+	MiniTest.expect.equality(#states, 2, "Should replace, not merge")
 	MiniTest.expect.equality(states[1], " ")
 	MiniTest.expect.equality(states[2], "x")
-	MiniTest.expect.equality(states[3], "X")
 end
 
 T["merge"]["deep merges nested objects"] = function()
