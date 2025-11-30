@@ -43,34 +43,21 @@ local M = {
 		views = {
 			{
 				id = "tasks",
-				title = "Tasks (by priority)",
+				title = "Tasks",
 				source = "tasks",
-				filters = {},
-				sort = {
-					by = "priority",
-					order = "asc",
-					priority_rank = { A = 1, B = 2, C = 3, Z = 99 },
+				filters = {
+					states = { "TODO", "IN_PROGRESS", "BLOCKED" },
 				},
-				group_by = nil,
+				sort = {
+					by = "file",
+					order = "asc",
+				},
+				group_by = "file",
 				display = { format = "timeline" },
 			},
 			{
-				id = "calendar_blocks",
-				title = "Calendar Blocks (7 days)",
-				source = "calendar",
-				filters = {
-					date_range = { days = 7, offset = 0 },
-				},
-				sort = {
-					by = "date",
-					order = "asc",
-				},
-				group_by = "date",
-				display = { format = "blocks" },
-			},
-			{
-				id = "calendar_compact",
-				title = "Calendar Compact Timeline (7 days)",
+				id = "calendar",
+				title = "Calendar (7 days)",
 				source = "calendar",
 				filters = {
 					date_range = { days = 10, offset = 0 },

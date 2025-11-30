@@ -490,6 +490,39 @@ function M.open_window(opts)
 	end
 end
 
+-- Update window title (works for both floating and split windows)
+function M.set_window_title(win, title)
+	if not vim.api.nvim_win_is_valid(win) then
+		return
+	end
+
+	local win_config = vim.api.nvim_win_get_config(win)
+	if win_config.relative and win_config.relative ~= "" then
+		-- Floating window
+		win_config.title = title
+		vim.api.nvim_win_set_config(win, win_config)
+	end
+	-- For split windows, title is typically shown in statusline or buffer content
+	-- which is handled elsewhere
+end
+
+-- Update window footer (works for both floating and split windows)
+function M.set_window_footer(win, footer)
+	if not vim.api.nvim_win_is_valid(win) then
+		return
+	end
+
+	local win_config = vim.api.nvim_win_get_config(win)
+	if win_config.relative and win_config.relative ~= "" then
+		-- Floating window
+		win_config.footer = footer
+		vim.api.nvim_win_set_config(win, win_config)
+	else
+		-- Split window
+		vim.wo[win].statusline = footer
+	end
+end
+
 function M.append_lines(filepath, lines)
 	local buf_lines = M.read_lines(filepath)
 	for _, line in ipairs(lines) do
