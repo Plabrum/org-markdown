@@ -2,6 +2,29 @@ local M = {
 	captures = {
 		window_method = "horizontal",
 		default_template = "todo",
+
+		-- Author name for %n template marker
+		-- Defaults to git config user.name, then $USER if not set
+		author_name = nil,
+
+		-- Available template markers:
+		-- %t - Active timestamp: <2025-11-29 Fri>
+		-- %T - Active timestamp with time: <2025-11-29 Fri 14:30>
+		-- %u - Inactive timestamp: [2025-11-29 Fri]
+		-- %U - Inactive timestamp with time: [2025-11-29 Fri 14:30]
+		-- %H - Time only: 14:30 (renamed from old %t to avoid conflict)
+		-- %n - Author name (from config.author_name, git config, or $USER)
+		-- %Y - Year: 2025
+		-- %m - Month: 11
+		-- %d - Day: 29
+		-- %f - Current file relative path
+		-- %F - Current file absolute path
+		-- %a - Link to current file and line: [[file:/path/to/file.md +123]]
+		-- %x - Clipboard contents
+		-- %? - Cursor position after template expansion
+		-- %^{prompt} - Prompt user for input with label
+		-- %<fmt> - Custom date format (e.g., %<%Y-%m-%d %H:%M:%S>)
+
 		templates = {
 			["todo"] = {
 				template = "# TODO %? \n %u",

@@ -167,13 +167,63 @@ end
 -- FILE OPERATIONS
 -- ============================================================================
 
+--- Validate sync markers in a file
+--- @param lines table Array of lines from file
+--- @param plugin_name string Name of plugin (for marker identification)
+--- @return boolean, string Success status and message
+local function validate_markers(lines, plugin_name)
+	local begin_pattern = vim.pesc(string.format("<!-- BEGIN ORG-MARKDOWN %s SYNC -->", plugin_name:upper()))
+	local end_pattern = vim.pesc(string.format("<!-- END ORG-MARKDOWN %s SYNC -->", plugin_name:upper()))
+
+	local begin_count = 0
+	local end_count = 0
+
+	for _, line in ipairs(lines) do
+		if line:match("^%s*" .. begin_pattern) then
+			begin_count = begin_count + 1
+		end
+		if line:match("^%s*" .. end_pattern) then
+			end_count = end_count + 1
+		end
+	end
+
+	-- Validate
+	if begin_count == 0 and end_count == 0 then
+		return true, "no_markers" -- File has no sync section yet
+	end
+
+	if begin_count ~= end_count then
+		return false,
+			string.format("Marker mismatch: %d BEGIN, %d END markers. File may be corrupted.", begin_count, end_count)
+	end
+
+	if begin_count > 1 then
+		return false, "Nested or duplicate markers detected. Manual cleanup required."
+	end
+
+	return true, "valid"
+end
+
 --- Read file and extract content outside sync markers
 --- @param filepath string Path to file
 --- @param plugin_name string Name of plugin (for marker identification)
 --- @return table, table Lines before markers, lines after markers
 local function read_preserved_content(filepath, plugin_name)
 	local expanded_path = vim.fn.expand(filepath)
+
+	-- Return empty tables if file doesn't exist
+	if vim.fn.filereadable(expanded_path) == 0 then
+		return {}, {}
+	end
+
 	local lines = utils.read_lines(expanded_path)
+
+	-- VALIDATE FIRST - prevent data loss from corrupted markers
+	local valid, status = validate_markers(lines, plugin_name)
+	if not valid then
+		vim.notify(string.format("[%s] Sync aborted: %s", plugin_name, status), vim.log.levels.ERROR)
+		error("Marker validation failed: " .. status)
+	end
 
 	local before_marker = string.format("<!-- BEGIN ORG-MARKDOWN %s SYNC -->", plugin_name:upper())
 	local after_marker = string.format("<!-- END ORG-MARKDOWN %s SYNC -->", plugin_name:upper())
@@ -197,6 +247,63 @@ local function read_preserved_content(filepath, plugin_name)
 	end
 
 	return lines_before, lines_after
+end
+
+--- Cleanup old backup files, keeping only the 3 most recent
+--- @param filepath string Original file path
+local function cleanup_old_backups(filepath)
+	local dir = vim.fn.fnamemodify(filepath, ":h")
+	local basename = vim.fn.fnamemodify(filepath, ":t")
+
+	-- Find all backups for this file
+	local backups = vim.fn.glob(dir .. "/" .. basename .. ".backup.*", false, true)
+
+	-- Sort by timestamp (extracted from filename)
+	table.sort(backups, function(a, b)
+		local ts_a = a:match("%.backup%.(%d+)$")
+		local ts_b = b:match("%.backup%.(%d+)$")
+		return (tonumber(ts_a) or 0) > (tonumber(ts_b) or 0)
+	end)
+
+	-- Keep only 3 most recent, delete the rest
+	for i = 4, #backups do
+		vim.uv.fs_unlink(backups[i])
+	end
+end
+
+--- Write sync file atomically with backup
+--- @param filepath string Path to file
+--- @param final_lines table Lines to write
+--- @param plugin_name string Plugin name (for error messages)
+local function write_sync_file_atomic(filepath, final_lines, plugin_name)
+	local expanded = vim.fn.expand(filepath)
+
+	-- Create backup if file exists
+	if vim.fn.filereadable(expanded) == 1 then
+		local backup_path = expanded .. ".backup." .. os.time()
+		local copy_ok, copy_err = pcall(vim.uv.fs_copyfile, expanded, backup_path)
+		if not copy_ok then
+			vim.notify(
+				string.format("[%s] Warning: Failed to create backup: %s", plugin_name, tostring(copy_err)),
+				vim.log.levels.WARN
+			)
+		else
+			-- Cleanup old backups after successful backup creation
+			cleanup_old_backups(expanded)
+		end
+	end
+
+	-- Write to temp file first
+	local temp_path = expanded .. ".tmp"
+	utils.write_lines(temp_path, final_lines)
+
+	-- Atomic rename (on Unix, this is atomic)
+	local rename_ok, rename_err = pcall(vim.uv.fs_rename, temp_path, expanded)
+	if not rename_ok then
+		-- Clean up temp file
+		vim.uv.fs_unlink(temp_path)
+		error("Failed to write sync file: " .. tostring(rename_err))
+	end
 end
 
 --- Write events to sync file with marker preservation
@@ -258,8 +365,8 @@ local function write_sync_file(events, plugin_name, plugin_config, stats)
 		end
 	end
 
-	-- Write to file
-	utils.write_lines(filepath, final_lines)
+	-- Write to file atomically with backup
+	write_sync_file_atomic(filepath, final_lines, plugin_name)
 end
 
 -- ============================================================================

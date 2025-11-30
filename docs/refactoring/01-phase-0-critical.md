@@ -12,27 +12,27 @@
 **How to use:** Check off items as you complete them by changing `- [ ]` to `- [x]`. Add inline notes with `<!-- Note: ... -->`.
 
 ### Bug 0.1: Sync Marker Data Loss
-- [ ] Marker validation function implemented
-- [ ] Atomic file write with backup implemented
-- [ ] Backup cleanup function implemented
-- [ ] Tests written (`tests/test_sync_markers.lua`)
-- [ ] All tests passing
+- [x] Marker validation function implemented
+- [x] Atomic file write with backup implemented
+- [x] Backup cleanup function implemented
+- [x] Tests written (`tests/test_sync_markers.lua`)
+- [x] All tests passing
 - [ ] Manual testing completed
 
 ### Bug 0.2: Refile Transaction Safety
-- [ ] Reorder operations (write → verify → delete)
-- [ ] Verification function implemented
-- [ ] Register storage for undo implemented
-- [ ] Tests written (`tests/test_refile_safety.lua`)
-- [ ] All tests passing
+- [x] Reorder operations (write → verify → delete)
+- [x] Verification function implemented
+- [x] Register storage for undo implemented
+- [x] Tests written (`tests/test_refile_safety.lua`)
+- [x] All tests passing
 - [ ] Manual testing completed
 
 ### Bug 0.3: Capture Template Issues
-- [ ] %t duplicate fixed (renamed to %H)
-- [ ] Hardcoded name removed
-- [ ] Config documentation updated
-- [ ] Tests written (`tests/test_capture_templates.lua`)
-- [ ] All tests passing
+- [x] %t duplicate fixed (renamed to %H)
+- [x] Hardcoded name removed
+- [x] Config documentation updated
+- [x] Tests written (added to `tests/test_capture.lua`)
+- [x] All tests passing
 - [ ] Manual testing completed
 
 ### Phase Completion

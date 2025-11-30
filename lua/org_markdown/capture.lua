@@ -138,14 +138,25 @@ local key_mapping = {
 			return M.capture_template_substitute(text, matched_target, inactive_date("%Y-%m-%d %a %H:%M"))
 		end,
 	},
+	-- %n: Author name (from config, git, or system user)
 	{
 		pattern = "%n",
 		handler = function(text, matched_target, _)
-			return M.capture_template_substitute(text, matched_target, "Phil Labrum")
+			local name = config.captures.author_name
+			if not name or name == "" then
+				-- Fallback to git config
+				name = vim.fn.system("git config user.name"):gsub("\n", "")
+			end
+			if not name or name == "" then
+				-- Fallback to system user
+				name = vim.env.USER or "User"
+			end
+			return M.capture_template_substitute(text, matched_target, name)
 		end,
 	},
+	-- %H: Time only (HH:MM) - renamed from %t to avoid conflict
 	{
-		pattern = "%t",
+		pattern = "%H",
 		handler = function(text, matched_target, _)
 			return M.capture_template_substitute(text, matched_target, os.date("%H:%M"))
 		end,
