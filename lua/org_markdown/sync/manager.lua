@@ -32,9 +32,9 @@ local EVENT_SCHEMA = {
 		type = "table",
 		required = true,
 		validate = function(v)
-			return v and v.year and v.month and v.day and v.day_name
+			return v and v.year and v.month and v.day
 		end,
-		error_msg = "start_date must have year, month, day, day_name",
+		error_msg = "start_date must have year, month, day",
 	},
 
 	all_day = {

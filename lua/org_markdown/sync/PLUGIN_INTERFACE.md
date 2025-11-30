@@ -20,7 +20,7 @@ function M.sync()
         events = {
             {
                 title = "My Event",
-                start_date = { year = 2025, month = 11, day = 29, day_name = "Fri" },
+                start_date = { year = 2025, month = 11, day = 29 },
                 all_day = true,
             }
         }
@@ -179,8 +179,7 @@ M.keymap = "<leader>osg"
     start_date = {
         year = 2025,
         month = 11,
-        day = 29,
-        day_name = "Fri"
+        day = 29
     },
 
     all_day = true,  -- Boolean: true for all-day, false for timed
@@ -195,8 +194,7 @@ M.keymap = "<leader>osg"
     end_date = {
         year = 2025,
         month = 11,
-        day = 30,
-        day_name = "Sat"
+        day = 30
     },
 
     -- Timed events (requires all_day = false)
@@ -334,8 +332,7 @@ function M.sync()
         local date = {
             year = tonumber(y),
             month = tonumber(m),
-            day = tonumber(d),
-            day_name = os.date("%a", os.time({year=y, month=m, day=d}))
+            day = tonumber(d)
         }
 
         -- Extract labels

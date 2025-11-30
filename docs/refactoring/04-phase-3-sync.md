@@ -106,9 +106,9 @@ local EVENT_SCHEMA = {
         type = "table",
         required = true,
         validate = function(v)
-            return v and v.year and v.month and v.day and v.day_name
+            return v and v.year and v.month and v.day
         end,
-        error_msg = "start_date must have year, month, day, day_name"
+        error_msg = "start_date must have year, month, day"
     },
 
     all_day = {
@@ -639,7 +639,7 @@ function M.sync()
         events = {
             {
                 title = "My Event",
-                start_date = { year = 2025, month = 11, day = 29, day_name = "Fri" },
+                start_date = { year = 2025, month = 11, day = 29 },
                 all_day = true,
             }
         }
@@ -791,8 +791,7 @@ M.keymap = "<leader>osg"
     start_date = {
         year = 2025,
         month = 11,
-        day = 29,
-        day_name = "Fri"
+        day = 29
     },
 
     all_day = true,  -- Boolean: true for all-day, false for timed
@@ -807,8 +806,7 @@ M.keymap = "<leader>osg"
     end_date = {
         year = 2025,
         month = 11,
-        day = 30,
-        day_name = "Sat"
+        day = 30
     },
 
     -- Timed events (requires all_day = false)
@@ -967,8 +965,7 @@ function M.sync()
         local date = {
             year = tonumber(y),
             month = tonumber(m),
-            day = tonumber(d),
-            day_name = os.date("%a", os.time({year=y, month=m, day=d}))
+            day = tonumber(d)
         }
 
         -- Extract labels

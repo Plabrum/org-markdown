@@ -71,7 +71,7 @@ end
 T["sync manager - format single-day all-day event"] = function()
 	local event = {
 		title = "Birthday Party",
-		start_date = { year = 2025, month = 12, day = 5, day_name = "Fri" },
+		start_date = { year = 2025, month = 12, day = 5 },
 		end_date = nil,
 		start_time = nil,
 		end_time = nil,
@@ -91,7 +91,7 @@ end
 T["sync manager - format single-day timed event"] = function()
 	local event = {
 		title = "Team Meeting",
-		start_date = { year = 2025, month = 11, day = 30, day_name = "Sat" },
+		start_date = { year = 2025, month = 11, day = 30 },
 		end_date = nil,
 		start_time = "14:00",
 		end_time = "15:00",
@@ -101,7 +101,7 @@ T["sync manager - format single-day timed event"] = function()
 
 	-- Expected markdown format:
 	-- # Team Meeting                                                    :work:
-	-- <2025-11-30 Sat 14:00-15:00>
+	-- <2025-11-30 Sun 14:00-15:00>
 
 	MiniTest.expect.equality(true, true) -- Placeholder
 end
@@ -109,8 +109,8 @@ end
 T["sync manager - format multi-day event"] = function()
 	local event = {
 		title = "Conference Trip",
-		start_date = { year = 2025, month = 12, day = 10, day_name = "Tue" },
-		end_date = { year = 2025, month = 12, day = 12, day_name = "Thu" },
+		start_date = { year = 2025, month = 12, day = 10 },
+		end_date = { year = 2025, month = 12, day = 12 },
 		start_time = nil,
 		end_time = nil,
 		all_day = true,
@@ -119,7 +119,7 @@ T["sync manager - format multi-day event"] = function()
 
 	-- Expected markdown format:
 	-- # Conference Trip                                                 :travel:
-	-- <2025-12-10 Tue>--<2025-12-12 Thu>
+	-- <2025-12-10 Wed>--<2025-12-12 Fri>
 
 	-- Note the double-dash separator for multi-day events
 	MiniTest.expect.equality(true, true) -- Placeholder
@@ -128,8 +128,8 @@ end
 T["sync manager - format multi-day timed event"] = function()
 	local event = {
 		title = "Workshop",
-		start_date = { year = 2025, month = 12, day = 15, day_name = "Sun" },
-		end_date = { year = 2025, month = 12, day = 17, day_name = "Tue" },
+		start_date = { year = 2025, month = 12, day = 15 },
+		end_date = { year = 2025, month = 12, day = 17 },
 		start_time = "09:00",
 		end_time = "17:00",
 		all_day = false,

@@ -234,7 +234,7 @@ Event data structure (returned by plugin sync()):
   events = {
     {
       title = "Event Title",
-      start_date = { year = 2025, month = 11, day = 28, day_name = "Thu" },
+      start_date = { year = 2025, month = 11, day = 28 },
       end_date = { ... },          -- Optional for multi-day events
       start_time = "14:00",         -- Optional for timed events (24-hour)
       end_time = "15:00",           -- Optional

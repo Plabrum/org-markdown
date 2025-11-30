@@ -131,7 +131,7 @@ end
 --- Parse macOS Calendar date format
 --- macOS returns: "Saturday, November 22, 2025 at 2:00:00 PM" or "Saturday, November 22, 2025"
 --- @param date_str string macOS date format
---- @return table|nil Date table {year, month, day, day_name, time}
+--- @return table|nil Date table {year, month, day, time}
 function M.parse_macos_date(date_str)
 	if not date_str or date_str == "" then
 		return nil
@@ -167,7 +167,6 @@ function M.parse_macos_date(date_str)
 		year = tonumber(year),
 		month = MONTH_MAP[month_name],
 		day = tonumber(day),
-		day_name = day_name:sub(1, 3), -- "Sat"
 		time = time,
 	}
 end
@@ -437,7 +436,6 @@ function M.today(as_table)
 			year = now.year,
 			month = now.month,
 			day = now.day,
-			day_name = os.date("%a"),
 		}
 	else
 		return os.date("%Y-%m-%d")
@@ -462,7 +460,6 @@ function M.add_days(date, days)
 		year = new_date.year,
 		month = new_date.month,
 		day = new_date.day,
-		day_name = os.date("%a", timestamp),
 	}
 
 	-- Preserve input format: if input was string, return string

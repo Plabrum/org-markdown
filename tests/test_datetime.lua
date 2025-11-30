@@ -65,7 +65,6 @@ T["parse_macos_date"]["parses with time (PM)"] = function()
 	MiniTest.expect.equality(date.year, 2025)
 	MiniTest.expect.equality(date.month, 11)
 	MiniTest.expect.equality(date.day, 22)
-	MiniTest.expect.equality(date.day_name, "Sat")
 	MiniTest.expect.equality(date.time, "14:00")
 end
 
@@ -82,7 +81,6 @@ T["parse_macos_date"]["parses without time"] = function()
 	MiniTest.expect.equality(date.year, 2025)
 	MiniTest.expect.equality(date.month, 12)
 	MiniTest.expect.equality(date.day, 25)
-	MiniTest.expect.equality(date.day_name, "Fri")
 	MiniTest.expect.equality(date.time, nil)
 end
 
@@ -158,55 +156,55 @@ end
 T["to_org_string"] = MiniTest.new_set()
 
 T["to_org_string"]["formats tracked date"] = function()
-	local result = datetime.to_org_string({ year = 2025, month = 11, day = 29, day_name = "Fri" }, { tracked = true })
-	MiniTest.expect.equality(result, "<2025-11-29 Fri>")
+	local result = datetime.to_org_string({ year = 2025, month = 11, day = 29 }, { tracked = true })
+	MiniTest.expect.equality(result, "<2025-11-29 Sat>")
 end
 
 T["to_org_string"]["formats untracked date"] = function()
-	local result = datetime.to_org_string({ year = 2025, month = 11, day = 29, day_name = "Fri" }, { tracked = false })
-	MiniTest.expect.equality(result, "[2025-11-29 Fri]")
+	local result = datetime.to_org_string({ year = 2025, month = 11, day = 29 }, { tracked = false })
+	MiniTest.expect.equality(result, "[2025-11-29]")
 end
 
 T["to_org_string"]["adds time"] = function()
 	local result = datetime.to_org_string(
-		{ year = 2025, month = 11, day = 29, day_name = "Fri" },
+		{ year = 2025, month = 11, day = 29 },
 		{ tracked = true, time = "14:00" }
 	)
-	MiniTest.expect.equality(result, "<2025-11-29 Fri 14:00>")
+	MiniTest.expect.equality(result, "<2025-11-29 Sat 14:00>")
 end
 
 T["to_org_string"]["adds time range"] = function()
 	local result = datetime.to_org_string(
-		{ year = 2025, month = 11, day = 29, day_name = "Fri" },
+		{ year = 2025, month = 11, day = 29 },
 		{ tracked = true, time = "09:00", end_time = "17:00" }
 	)
-	MiniTest.expect.equality(result, "<2025-11-29 Fri 09:00-17:00>")
+	MiniTest.expect.equality(result, "<2025-11-29 Sat 09:00-17:00>")
 end
 
 T["format_date_range"] = MiniTest.new_set()
 
 T["format_date_range"]["formats all-day single day"] = function()
 	local result = datetime.format_date_range(
-		{ year = 2025, month = 11, day = 29, day_name = "Fri" },
+		{ year = 2025, month = 11, day = 29 },
 		nil,
 		{ all_day = true }
 	)
-	MiniTest.expect.equality(result, "<2025-11-29 Fri>")
+	MiniTest.expect.equality(result, "<2025-11-29 Sat>")
 end
 
 T["format_date_range"]["formats timed single day"] = function()
 	local result = datetime.format_date_range(
-		{ year = 2025, month = 11, day = 29, day_name = "Fri" },
+		{ year = 2025, month = 11, day = 29 },
 		nil,
 		{ all_day = false, start_time = "09:00", end_time = "17:00" }
 	)
-	MiniTest.expect.equality(result, "<2025-11-29 Fri 09:00-17:00>")
+	MiniTest.expect.equality(result, "<2025-11-29 Sat 09:00-17:00>")
 end
 
 T["format_date_range"]["formats multi-day all-day"] = function()
 	local result = datetime.format_date_range(
-		{ year = 2025, month = 12, day = 1, day_name = "Mon" },
-		{ year = 2025, month = 12, day = 3, day_name = "Wed" },
+		{ year = 2025, month = 12, day = 1 },
+		{ year = 2025, month = 12, day = 3 },
 		{ all_day = true }
 	)
 	MiniTest.expect.equality(result, "<2025-12-01 Mon>--<2025-12-03 Wed>")
@@ -214,8 +212,8 @@ end
 
 T["format_date_range"]["formats multi-day timed"] = function()
 	local result = datetime.format_date_range(
-		{ year = 2025, month = 12, day = 1, day_name = "Mon" },
-		{ year = 2025, month = 12, day = 3, day_name = "Wed" },
+		{ year = 2025, month = 12, day = 1 },
+		{ year = 2025, month = 12, day = 3 },
 		{ all_day = false, start_time = "09:00", end_time = "17:00" }
 	)
 	MiniTest.expect.equality(result, "<2025-12-01 Mon 09:00>--<2025-12-03 Wed 17:00>")
@@ -362,7 +360,6 @@ T["today"]["returns table when requested"] = function()
 	MiniTest.expect.no_equality(result.year, nil)
 	MiniTest.expect.no_equality(result.month, nil)
 	MiniTest.expect.no_equality(result.day, nil)
-	MiniTest.expect.no_equality(result.day_name, nil)
 end
 
 T["add_days"] = MiniTest.new_set()
