@@ -93,10 +93,14 @@ local EVENT_SCHEMA = {
 		type = "string",
 		required = false,
 		validate = function(v)
-			local valid_states = { "TODO", "IN_PROGRESS", "WAITING", "DONE", "CANCELLED", "BLOCKED" }
-			return not v or vim.tbl_contains(valid_states, v)
+			if not v then
+				return true
+			end
+			local config = require("org_markdown.config")
+			local valid_states = config.status_states or { "TODO", "IN_PROGRESS", "DONE" }
+			return vim.tbl_contains(valid_states, v)
 		end,
-		error_msg = "status must be valid state",
+		error_msg = "status must be valid state from config.status_states",
 	},
 	priority = {
 		type = "string",

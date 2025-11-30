@@ -77,7 +77,7 @@ T["get_refile_target - detects heading with children"] = function()
 	vim.api.nvim_buf_delete(bufnr, { force = true })
 end
 
-T["get_refile_target - returns value for heading"] = function()
+T["get_refile_target - returns nil for plain text"] = function()
 	local lines = {
 		"# Header",
 		"Just some plain text",
@@ -90,10 +90,31 @@ T["get_refile_target - returns value for heading"] = function()
 
 	local target = refile.get_refile_target()
 
-	-- With cursor on line 2, it tries to refile based on that line
-	-- Due to indexing issue, behavior may vary
-	-- Just verify we don't crash
-	MiniTest.expect.equality(type(target), "table")
+	-- When cursor is on plain text (not a bullet or heading), should return nil
+	MiniTest.expect.equality(target, nil, "Expected nil for plain text")
+
+	vim.api.nvim_buf_delete(bufnr, { force = true })
+end
+
+T["get_refile_target - detects TODO heading on first line"] = function()
+	local lines = {
+		"# TODO  General todo that should be refiled",
+		" [2025-11-30 Sun]",
+	}
+
+	local bufnr = create_test_buffer(lines)
+	vim.api.nvim_set_current_buf(bufnr)
+	vim.api.nvim_win_set_cursor(0, { 1, 0 }) -- Line 1 (the heading)
+
+	local target = refile.get_refile_target()
+
+	-- Should detect the heading
+	MiniTest.expect.no_equality(target, nil, "Expected to detect heading but got nil")
+	MiniTest.expect.no_equality(target.lines, nil, "Expected lines to be detected")
+	MiniTest.expect.equality(type(target.lines), "table")
+	MiniTest.expect.equality(target.lines[1], "# TODO  General todo that should be refiled")
+	-- Should include the date line as well since it's part of the heading block
+	MiniTest.expect.equality(target.lines[2], " [2025-11-30 Sun]")
 
 	vim.api.nvim_buf_delete(bufnr, { force = true })
 end

@@ -10,10 +10,34 @@ local datetime = require("org_markdown.utils.datetime")
 local frontmatter = require("org_markdown.utils.frontmatter")
 
 local M = {}
-vim.api.nvim_set_hl(0, "OrgTodo", { fg = "#ff5f5f", bold = true })
-vim.api.nvim_set_hl(0, "OrgInProgress", { fg = "#f0c000", bold = true })
-vim.api.nvim_set_hl(0, "OrgDone", { fg = "#5fd75f", bold = true })
-vim.api.nvim_set_hl(0, "OrgTitle", { fg = "#87afff", bold = true })
+
+-- Color palette mapping color names to hex values
+local COLOR_PALETTE = {
+	red = "#ff5f5f",
+	yellow = "#f0c000",
+	green = "#5fd75f",
+	blue = "#5fafd7",
+	orange = "#ff8700",
+	purple = "#af87ff",
+	gray = "#808080",
+}
+
+-- Setup dynamic highlight groups based on config
+local function setup_highlight_groups()
+	local status_colors = config.status_colors or {}
+
+	for state, color_name in pairs(status_colors) do
+		local hex_color = COLOR_PALETTE[color_name] or COLOR_PALETTE.red
+		local hl_group_name = "OrgStatus_" .. state
+		vim.api.nvim_set_hl(0, hl_group_name, { fg = hex_color, bold = true })
+	end
+
+	-- Keep OrgTitle for agenda view titles
+	vim.api.nvim_set_hl(0, "OrgTitle", { fg = "#87afff", bold = true })
+end
+
+-- Initialize highlights
+setup_highlight_groups()
 
 -- Helper to find view by ID
 local function find_view(view_id)
@@ -47,28 +71,24 @@ local function cycle_todo_in_file(item)
 end
 
 local function highlight_states(buf, lines)
+	local status_states = config.status_states or { "TODO", "IN_PROGRESS", "DONE" }
+
 	for i, line in ipairs(lines) do
-		-- Find the position of each state word and highlight only that word
-		local todo_start, todo_end = line:find("TODO")
-		if todo_start then
-			vim.api.nvim_buf_add_highlight(buf, -1, "OrgTodo", i - 1, todo_start - 1, todo_end)
-		end
-
-		local inprog_start, inprog_end = line:find("IN_PROGRESS")
-		if inprog_start then
-			vim.api.nvim_buf_add_highlight(buf, -1, "OrgInProgress", i - 1, inprog_start - 1, inprog_end)
-		end
-
-		local done_start, done_end = line:find("DONE")
-		if done_start then
-			vim.api.nvim_buf_add_highlight(buf, -1, "OrgDone", i - 1, done_start - 1, done_end)
+		-- Find the position of each configured state word and highlight it
+		for _, state in ipairs(status_states) do
+			local state_start, state_end = line:find(state)
+			if state_start then
+				local hl_group_name = "OrgStatus_" .. state
+				vim.api.nvim_buf_add_highlight(buf, -1, hl_group_name, i - 1, state_start - 1, state_end)
+			end
 		end
 	end
 end
 
 -- Returns table of agenda items
 local function scan_files()
-	local files = queries.find_markdown_files()
+	-- Agenda should scan ALL files, ignoring refile_heading_ignore patterns
+	local files = queries.find_markdown_files({ ignore_patterns = {} })
 	local agenda_items = { tasks = {}, calendar = {} }
 
 	for _, file in ipairs(files) do

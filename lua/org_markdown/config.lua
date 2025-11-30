@@ -46,7 +46,7 @@ local M = {
 				title = "Tasks",
 				source = "tasks",
 				filters = {
-					states = { "TODO", "IN_PROGRESS", "BLOCKED" },
+					states = { "TODO", "IN_PROGRESS" },
 				},
 				sort = {
 					by = "file",
@@ -56,8 +56,22 @@ local M = {
 				display = { format = "timeline" },
 			},
 			{
-				id = "calendar",
-				title = "Calendar (7 days)",
+				id = "calendar_blocks",
+				title = "Calendar (Blocks)",
+				source = "calendar",
+				filters = {
+					date_range = { days = 10, offset = 0 },
+				},
+				sort = {
+					by = "date",
+					order = "asc",
+				},
+				group_by = "date",
+				display = { format = "blocks" },
+			},
+			{
+				id = "calendar_compact",
+				title = "Calendar (Compact)",
 				source = "calendar",
 				filters = {
 					date_range = { days = 10, offset = 0 },
@@ -75,6 +89,7 @@ local M = {
 	picker = "snacks", -- or "telescope"
 	-- picker = "telescope",
 	refile_paths = { "~/notes" },
+	refile_heading_ignore = { "calendar", "archive/*" }, -- List of patterns to exclude from refile heading operations (e.g., "calendar.md", "archive/*")
 	quick_note_file = "~/notes/quick_notes/",
 	sync = {
 		enabled = true,
@@ -86,8 +101,8 @@ local M = {
 	keymaps = {
 		capture = "<leader>oc",
 		agenda = "<leader>oa",
-		find_file = "<leader>of",
-		find_heading = "<leader>oh",
+		find_file = "<leader>off",
+		find_heading = "<leader>ofh",
 		refile_to_file = "<leader>orf",
 		refile_to_heading = "<leader>orh",
 		open_quick_note = "<leader>z",
@@ -102,6 +117,11 @@ local M = {
 		"TODO",
 		"IN_PROGRESS",
 		"DONE",
+	},
+	status_colors = {
+		TODO = "red",
+		IN_PROGRESS = "yellow",
+		DONE = "green",
 	},
 
 	-- TODO PAL: Implement front matter automations

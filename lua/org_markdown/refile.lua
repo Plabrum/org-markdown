@@ -44,44 +44,50 @@ end
 
 function M.get_refile_target()
 	local cursor = vim.api.nvim_win_get_cursor(0)
-	local row = cursor[1] - 1
+	local row = cursor[1] -- Keep 1-indexed for lines array access
 	local lines = vim.api.nvim_buf_get_lines(0, 0, -1, false)
 	local current = lines[row]
+
+	if not current then
+		vim.notify("No content at cursor position", vim.log.levels.ERROR)
+		return nil
+	end
+
 	current = current:match("^%s*(.*)")
 	-- 1. Bullet match
-	if current:match("^%s*[-*+] %[[ x%-]%)") or current:match("^%s*[-*+] ") then
+	if current:match("^%s*[-*+] %[[ x%-]%]") or current:match("^%s*[-*+] ") then
 		return {
 			lines = { current },
-			start_line = row,
-			end_line = row + 1,
+			start_line = row - 1, -- Convert to 0-indexed for nvim_buf_set_lines
+			end_line = row,
 		}
 	end
 
 	-- 2. Heading match
 	local heading_level, heading_text = current:match("^(#+)%s*(.*)")
 	if heading_level then
-		local start_line = row
-		local end_line = start_line + 1
+		local start_idx = row -- 1-indexed for array access
+		local end_idx = start_idx + 1
 		local current_level = #heading_level
 
-		while end_line <= #lines do
-			local next_line = lines[end_line]
+		while end_idx <= #lines do
+			local next_line = lines[end_idx]
 			local next_level = next_line:match("^(#+)")
 			if next_level and #next_level <= current_level then
 				break
 			end
-			end_line = end_line + 1
+			end_idx = end_idx + 1
 		end
 
 		local range = {}
-		for i = start_line, end_line - 1 do
+		for i = start_idx, end_idx - 1 do
 			table.insert(range, lines[i])
 		end
 
 		return {
 			lines = range,
-			start_line = start_line,
-			end_line = end_line,
+			start_line = start_idx - 1, -- Convert to 0-indexed for nvim_buf_set_lines
+			end_line = end_idx - 1,
 		}
 	end
 
@@ -144,6 +150,48 @@ function M.to_file()
 			vim.api.nvim_buf_set_lines(0, selection.start_line, selection.end_line, false, {})
 
 			vim.notify("Refiled to " .. item.value .. ' (undo: press "rp in target file)')
+		end,
+	})
+end
+
+function M.to_heading()
+	-- 1. Get content to refile
+	local selection = M.get_refile_target()
+	if not selection or not selection.lines then
+		vim.notify("No bullet point or heading detected to refile", vim.log.levels.ERROR)
+		return
+	end
+
+	-- 2. Get all headings using shared utility
+	local all_headings = utils.get_all_headings()
+
+	if #all_headings == 0 then
+		vim.notify("No headings found in any markdown files", vim.log.levels.WARN)
+		return
+	end
+
+	-- 3. Show single picker with all headings
+	picker.pick(all_headings, {
+		prompt = "Refile under heading:",
+		kind = "generic",
+		format_item = function(item)
+			-- Show as: "  Heading Name  (filename)"
+			return {
+				{ item.display, "Directory" },
+				{ "  (" .. item.filename .. ")", "Comment" },
+			}
+		end,
+		on_confirm = function(item)
+			-- 4. Insert under heading (this also writes the file)
+			utils.insert_under_heading(item.filepath, item.heading_text, selection.lines)
+
+			-- 5. Store in register for undo
+			vim.fn.setreg("r", table.concat(selection.lines, "\n"))
+
+			-- 6. Delete from source
+			vim.api.nvim_buf_set_lines(0, selection.start_line, selection.end_line, false, {})
+
+			vim.notify("Refiled to " .. item.filename .. " → " .. item.heading_text .. ' (undo: press "rp in target file)')
 		end,
 	})
 end
