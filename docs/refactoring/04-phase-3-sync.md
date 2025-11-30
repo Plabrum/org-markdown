@@ -1065,8 +1065,6 @@ require("org_markdown").setup({
 
 ## Success Criteria
 
-Before proceeding to Phase 4:
-
 - [ ] Event validation catches all malformed events
 - [ ] Extended event model supports id, source_url, location, status, priority
 - [ ] Plugin state persistence working

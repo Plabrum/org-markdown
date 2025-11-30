@@ -1,6 +1,6 @@
 # Refactoring Plan: Quick Start Guide
 
-This directory contains a comprehensive 4-6 week refactoring plan for org-markdown, organized into 5 phases.
+This directory contains a comprehensive 4-week refactoring plan for org-markdown, organized into 4 phases.
 
 ## How to Use This Plan
 
@@ -50,12 +50,6 @@ Work through phases in order:
    - Plugin state persistence
    - Complete documentation
 
-5. **[Phase 4: Performance & Caching](05-phase-4-performance.md)** (Days 29-35)
-   - Query caching (20x+ speedup)
-   - Agenda caching
-   - Parser optimization
-   - Benchmarks
-
 ### 4. Git Workflow
 For each phase:
 ```bash
@@ -88,11 +82,6 @@ git push origin refactor/phase-N-name
 2. **Refile transaction** - Deletes before write completes
 3. **Capture template** - Duplicate %t pattern, hardcoded name
 
-### Performance Targets
-- File queries: 200ms → <10ms (cached)
-- Agenda refresh: 1000ms → <50ms (cached)
-- Parser: 10-15% faster
-
 ### Key Files to Modify
 
 **Phase 0:**
@@ -119,10 +108,6 @@ git push origin refactor/phase-N-name
 - `lua/org_markdown/sync/state.lua` (new)
 - `lua/org_markdown/sync/PLUGIN_INTERFACE.md` (new)
 
-**Phase 4:**
-- `lua/org_markdown/utils/queries.lua`
-- `lua/org_markdown/agenda.lua`
-
 ## Getting Help
 
 ### If You Get Stuck
@@ -145,7 +130,6 @@ Track overall completion:
 - [ ] Phase 1: Test Infrastructure
 - [ ] Phase 2: Architecture Improvements
 - [ ] Phase 3: Sync System Hardening
-- [ ] Phase 4: Performance & Caching
 
 **Started:** ___/___/___
 **Target completion:** ___/___/___

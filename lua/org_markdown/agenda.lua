@@ -6,6 +6,7 @@ local formatter = require("org_markdown.utils.formatter")
 local queries = require("org_markdown.utils.queries")
 local editing = require("org_markdown.utils.editing")
 local agenda_formatters = require("org_markdown.agenda_formatters")
+local datetime = require("org_markdown.utils.datetime")
 
 local M = {}
 vim.api.nvim_set_hl(0, "OrgTodo", { fg = "#ff5f5f", bold = true })
@@ -107,17 +108,9 @@ local function parse_date_range(date_range_spec)
 		return nil
 	end
 
-	if date_range_spec.days then
-		-- Relative date range: { days = N, offset = 0 }
-		local offset = date_range_spec.offset or 0
-		local today = os.time()
-		local start_date = os.date("%Y-%m-%d", today + offset * 86400)
-		local end_date = os.date("%Y-%m-%d", today + (offset + date_range_spec.days - 1) * 86400)
-		return { from = start_date, to = end_date }
-	else
-		-- Absolute date range: { from = "YYYY-MM-DD", to = "YYYY-MM-DD" }
-		return date_range_spec
-	end
+	-- Delegate to datetime module for range calculation
+	local start_date, end_date = datetime.calculate_range(date_range_spec)
+	return { from = start_date, to = end_date }
 end
 
 -- Filter a single item based on filter specs
@@ -323,7 +316,7 @@ local formatters = {
 
 		group_header = function(group_key, group_by)
 			if group_by == "date" then
-				return "  " .. formatter.format_date(group_key)
+				return "  " .. datetime.format_display(group_key)
 			else
 				return group_key
 			end
@@ -341,10 +334,8 @@ local formatters = {
 
 		group_header = function(group_key, group_by)
 			if group_by == "date" then
-				local y, m, d = group_key:match("(%d+)%-(%d+)%-(%d+)")
-				local time = os.time({ year = y, month = m, day = d })
 				return "  "
-					.. os.date("%a %d %b", time)
+					.. datetime.format_display(group_key, "%a %d %b")
 					.. " ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
 			else
 				return group_key

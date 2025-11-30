@@ -1,5 +1,6 @@
 local config = require("org_markdown.config")
 local utils = require("org_markdown.utils.utils")
+local datetime = require("org_markdown.utils.datetime")
 
 local M = {}
 
@@ -229,51 +230,16 @@ end
 -- EVENT FORMATTING
 -- ============================================================================
 
---- Check if two dates are the same day
---- @param date1 table Date with year, month, day
---- @param date2 table Date with year, month, day
---- @return boolean
-local function is_same_day(date1, date2)
-	return date1.year == date2.year and date1.month == date2.month and date1.day == date2.day
-end
-
 --- Format date range for an event
 --- @param event table Event with start_date, end_date, start_time, end_time, all_day
 --- @return string Formatted date range
 local function format_date_range(event)
-	local start = event.start_date
-	local date_str = string.format("<%04d-%02d-%02d %s", start.year, start.month, start.day, start.day_name)
-
-	-- Multi-day event
-	if event.end_date and not is_same_day(event.start_date, event.end_date) then
-		local end_d = event.end_date
-
-		-- Add start time if timed event
-		if not event.all_day and event.start_time then
-			date_str = date_str .. " " .. event.start_time
-		end
-
-		date_str = date_str
-			.. ">--<"
-			.. string.format("%04d-%02d-%02d %s", end_d.year, end_d.month, end_d.day, end_d.day_name)
-
-		-- Add end time if timed event
-		if not event.all_day and event.end_time then
-			date_str = date_str .. " " .. event.end_time
-		end
-	else
-		-- Single-day event: add time for timed events
-		if not event.all_day and event.start_time then
-			if event.end_time then
-				date_str = date_str .. " " .. event.start_time .. "-" .. event.end_time
-			else
-				date_str = date_str .. " " .. event.start_time
-			end
-		end
-	end
-
-	date_str = date_str .. ">"
-	return date_str
+	-- Delegate to datetime module
+	return datetime.format_date_range(event.start_date, event.end_date, {
+		all_day = event.all_day,
+		start_time = event.start_time,
+		end_time = event.end_time,
+	})
 end
 
 --- Format an event as markdown lines

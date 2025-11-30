@@ -1,4 +1,5 @@
 local config = require("org_markdown.config")
+local datetime = require("org_markdown.utils.datetime")
 
 local M = {
 	name = "calendar",
@@ -124,59 +125,12 @@ end
 --- @param date_str string macOS date format
 --- @return table|nil date components { year, month, day, day_name, time }
 local function parse_macos_date(date_str)
-	if not date_str or date_str == "" then
-		return nil
+	-- Delegate to datetime module
+	local result = datetime.parse_macos_date(date_str)
+	if not result then
+		vim.notify("Failed to parse date: " .. (date_str or "nil"), vim.log.levels.WARN)
 	end
-
-	local month_map = {
-		January = 1,
-		February = 2,
-		March = 3,
-		April = 4,
-		May = 5,
-		June = 6,
-		July = 7,
-		August = 8,
-		September = 9,
-		October = 10,
-		November = 11,
-		December = 12,
-	}
-
-	-- Try parsing with time: "Saturday, November 22, 2025 at 2:00:00 PM"
-	local day_name, month_name, day, year, hour, min, sec, meridian =
-		date_str:match("(%a+), (%a+) (%d+), (%d+) at (%d+):(%d+):(%d+) (%a+)")
-
-	local time = nil
-	if day_name then
-		-- Has time - convert to 24-hour format
-		hour = tonumber(hour)
-		min = tonumber(min)
-
-		if meridian == "PM" and hour ~= 12 then
-			hour = hour + 12
-		elseif meridian == "AM" and hour == 12 then
-			hour = 0
-		end
-
-		time = string.format("%02d:%02d", hour, min)
-	else
-		-- Try parsing without time: "Saturday, November 22, 2025"
-		day_name, month_name, day, year = date_str:match("(%a+), (%a+) (%d+), (%d+)")
-
-		if not day_name then
-			vim.notify("Failed to parse date: " .. date_str, vim.log.levels.WARN)
-			return nil
-		end
-	end
-
-	return {
-		year = tonumber(year),
-		month = month_map[month_name],
-		day = tonumber(day),
-		day_name = day_name:sub(1, 3), -- "Sat"
-		time = time,
-	}
+	return result
 end
 
 --- Parse AppleScript output into events
@@ -234,14 +188,14 @@ end
 --- @param plugin_config table Plugin configuration
 --- @return string, string start_date, end_date (YYYY-MM-DD format)
 local function calculate_date_range(plugin_config)
-	local today = os.time()
 	local days_behind = plugin_config.days_behind or 0
 	local days_ahead = plugin_config.days_ahead or 30
 
-	local start_time = today - (days_behind * 86400)
-	local end_time = today + (days_ahead * 86400)
+	-- Convert to datetime module format: offset (negative for past), days (total range)
+	local offset = -days_behind
+	local total_days = days_behind + days_ahead + 1
 
-	return os.date("%Y-%m-%d", start_time), os.date("%Y-%m-%d", end_time)
+	return datetime.calculate_range({ days = total_days, offset = offset })
 end
 
 --- Filter calendars based on config (include/exclude lists)

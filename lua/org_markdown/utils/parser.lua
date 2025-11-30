@@ -1,4 +1,5 @@
 local M = {}
+local datetime = require("org_markdown.utils.datetime")
 
 local valid_states = {
 	TODO = true,
@@ -61,30 +62,16 @@ function M.parse_text(line)
 end
 
 function M.extract_date(line)
-	-- Match date with optional day name and time: <YYYY-MM-DD>, <YYYY-MM-DD Tue>, <YYYY-MM-DD Tue 14:00>
+	-- Extract both tracked and untracked dates independently
+	-- (a line can have both, e.g., "TODO task <2025-06-22> [2025-06-23]")
 	local tracked = line:match("<(%d%d%d%d%-%d%d%-%d%d)")
 	local untracked = line:match("%[(%d%d%d%d%-%d%d%-%d%d)")
 	return tracked, untracked
 end
 
 function M.extract_times(line)
-	-- Match multi-day time range: <YYYY-MM-DD Day HH:MM>--<YYYY-MM-DD Day HH:MM>
-	local start_time = line:match("<[^>]*(%d%d:%d%d)>%-%-%<")
-	if start_time then
-		local end_time = line:match(">%-%-%<[^>]*(%d%d:%d%d)>")
-		return start_time, end_time
-	end
-
-	-- Match same-day time range: <YYYY-MM-DD Day HH:MM-HH:MM>
-	local end_time
-	start_time, end_time = line:match("<[^>]*(%d%d:%d%d)%-(%d%d:%d%d)")
-	if start_time then
-		return start_time, end_time
-	end
-
-	-- Match single time: <YYYY-MM-DD Day HH:MM>
-	start_time = line:match("<[^>]*(%d%d:%d%d)>")
-	return start_time, nil
+	-- Wrapper: delegate to datetime module
+	return datetime.extract_times(line)
 end
 
 function M.extract_tags(line)
@@ -153,19 +140,8 @@ end
 
 -- Validate time string (HH:MM format)
 function M.validate_time(time_str)
-	if not time_str or type(time_str) ~= "string" then
-		return false
-	end
-
-	local h, m = time_str:match("^(%d%d):(%d%d)$")
-	if not h then
-		return false
-	end
-
-	local hour = tonumber(h)
-	local min = tonumber(m)
-
-	return hour >= 0 and hour < 24 and min >= 0 and min < 60
+	-- Wrapper: delegate to datetime module
+	return datetime.validate_time(time_str)
 end
 
 return M

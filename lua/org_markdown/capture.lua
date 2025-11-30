@@ -2,6 +2,7 @@ local config = require("org_markdown.config")
 local utils = require("org_markdown.utils.utils")
 local parser = require("org_markdown.utils.parser")
 local async = require("org_markdown.utils.async")
+local datetime = require("org_markdown.utils.datetime")
 
 local M = {}
 
@@ -96,46 +97,34 @@ function M.open_capture_buffer_async(content, cursor_row, cursor_col, tpl)
 	end)
 end
 
-local function format_date(fmt)
-	return os.date(fmt)
-end
-
-local function inactive_date(fmt)
-	return "[" .. os.date(fmt) .. "]"
-end
-
-local function active_date(fmt)
-	return "<" .. os.date(fmt) .. ">"
-end
-
 -- Insert a capture line under a specific heading in a file
 local key_mapping = {
 	-- %t: <YYYY-MM-DD Day>
 	{
 		pattern = "%t",
 		handler = function(text, matched_target, _)
-			return M.capture_template_substitute(text, matched_target, active_date("%Y-%m-%d %a"))
+			return M.capture_template_substitute(text, matched_target, datetime.capture_format("%Y-%m-%d %a", "<"))
 		end,
 	},
 	-- %T: <YYYY-MM-DD Day HH:MM>
 	{
 		pattern = "%T",
 		handler = function(text, matched_target, _)
-			return M.capture_template_substitute(text, matched_target, active_date("%Y-%m-%d %a %H:%M"))
+			return M.capture_template_substitute(text, matched_target, datetime.capture_format("%Y-%m-%d %a %H:%M", "<"))
 		end,
 	},
 	-- %u: [YYYY-MM-DD Day]
 	{
 		pattern = "%u",
 		handler = function(text, matched_target, _)
-			return M.capture_template_substitute(text, matched_target, inactive_date("%Y-%m-%d %a"))
+			return M.capture_template_substitute(text, matched_target, datetime.capture_format("%Y-%m-%d %a", "["))
 		end,
 	},
 	-- %U: [YYYY-MM-DD Day HH:MM]
 	{
 		pattern = "%U",
 		handler = function(text, matched_target, _)
-			return M.capture_template_substitute(text, matched_target, inactive_date("%Y-%m-%d %a %H:%M"))
+			return M.capture_template_substitute(text, matched_target, datetime.capture_format("%Y-%m-%d %a %H:%M", "["))
 		end,
 	},
 	-- %n: Author name (from config, git, or system user)
@@ -158,25 +147,25 @@ local key_mapping = {
 	{
 		pattern = "%H",
 		handler = function(text, matched_target, _)
-			return M.capture_template_substitute(text, matched_target, os.date("%H:%M"))
+			return M.capture_template_substitute(text, matched_target, datetime.capture_format("%H:%M"))
 		end,
 	},
 	{
 		pattern = "%Y",
 		handler = function(text, matched_target, _)
-			return M.capture_template_substitute(text, matched_target, os.date("%Y"))
+			return M.capture_template_substitute(text, matched_target, datetime.capture_format("%Y"))
 		end,
 	},
 	{
 		pattern = "%m",
 		handler = function(text, matched_target, _)
-			return M.capture_template_substitute(text, matched_target, os.date("%m"))
+			return M.capture_template_substitute(text, matched_target, datetime.capture_format("%m"))
 		end,
 	},
 	{
 		pattern = "%d",
 		handler = function(text, matched_target, _)
-			return M.capture_template_substitute(text, matched_target, os.date("%d"))
+			return M.capture_template_substitute(text, matched_target, datetime.capture_format("%d"))
 		end,
 	},
 	{
@@ -205,7 +194,7 @@ local key_mapping = {
 		handler = function(text, matched_target, _)
 			local fmt = matched_target:match("%<(.-)%>")
 			if fmt then
-				return M.capture_template_substitute(text, matched_target, os.date(fmt))
+				return M.capture_template_substitute(text, matched_target, datetime.capture_format(fmt))
 			else
 				return text
 			end
