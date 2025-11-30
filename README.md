@@ -6,6 +6,7 @@ Org markdown gives org mode features to markdown files in Neovim.
   * Agenda view for scheduled tasks using <YYYY-MM-DD>
   * Task management for TODO and IN_PROGRESS headings
   * Priority-aware task sorting ([#A], [#B], etc.)
+  * Quick notes - Timestamped markdown files with a single keypress
   * Refile entries to other headings or files
   * Flexible capture templates with floating editor support
   * Picker support via telescope.nvim or snacks.nvim
@@ -30,14 +31,103 @@ return {
 
 Command	Description
 :MarkdownCapture	Create a new capture
-:MarkdownAgenda	Combined agenda view
-:MarkdownAgendaTasks	Task view sorted by priority
-:MarkdownAgendaCalendar	Calendar view (7-day range)
+:MarkdownAgenda	Open agenda view (cycle views with `[` and `]`)
 :MarkdownRefileFile	Refile content to a file
 :MarkdownRefileHeading	Refile content under a heading
 :MarkdownSyncCalendar	Sync events from Apple Calendar (macOS)
 :MarkdownSyncAll	Sync all enabled sync plugins
 
+
+### Quick Notes
+
+Quickly create notes without opening a picker or capture template.
+
+**Usage:**
+1. Press `<leader>z` (or your configured keymap)
+2. A new markdown file is created based on the recipe type
+3. Start writing immediately - auto-saved on CursorHold/InsertLeave
+
+**Built-in Note Types (Recipes):**
+- **Git Branch Note** - Creates `folder-name__branch-name.md` (useful for project-specific notes)
+- **Daily Journal** - Creates `journal_YYYY-MM-DD.md` (daily journaling)
+
+**Navigation:**
+- `[` / `]` - Cycle between note types (if multiple recipes are configured)
+- `q` or `<Esc>` - Close the note
+
+**Configuration:**
+```lua
+opts = {
+  quick_note_file = "~/notes/quick_notes/",  -- Directory for quick notes
+  keymaps = {
+    open_quick_note = "<leader>z",
+  }
+}
+```
+
+
+### Using Capture
+
+Capture templates let you quickly add content to specific files and headings.
+
+**Workflow:**
+1. Run `:MarkdownCapture` or press `<leader>oc`
+2. Select a template from the picker
+3. Fill in the capture buffer (cursor starts at `%?` marker position)
+4. **Submit:** `<C-c><C-c>` or `<leader><CR>` to save
+5. **Cancel:** `<C-c><C-k>` to abort
+
+**Navigation:**
+- `[` / `]` - Cycle between templates (if multiple templates are configured)
+- `<Tab>` - Jump to next `%?` cursor marker in the template
+
+**Template Markers:**
+- `%t` - Active timestamp: `<2025-11-30 Sat>`
+- `%T` - Active timestamp with time: `<2025-11-30 Sat 14:30>`
+- `%u` - Inactive timestamp: `[2025-11-30 Sat]`
+- `%U` - Inactive timestamp with time: `[2025-11-30 Sat 14:30]`
+- `%H` - Time only: `14:30`
+- `%n` - Author name (from git config or $USER)
+- `%Y`, `%m`, `%d` - Year, month, day
+- `%f` - Current file relative path
+- `%F` - Current file absolute path
+- `%a` - Link to current file and line: `[[file:/path/to/file.md +123]]`
+- `%x` - Clipboard contents
+- `%?` - Cursor position after template expansion
+- `%^{prompt}` - Prompt user for input with label
+- `%<fmt>` - Custom date format (e.g., `%<%Y-%m-%d %H:%M:%S>`)
+
+**Example Template:**
+```lua
+opts = {
+  captures = {
+    templates = {
+      todo = {
+        filename = "~/notes/todo.md",
+        heading = "TODO's",
+        template = "# TODO %? \n %u",  -- Cursor at %?, adds inactive timestamp
+      },
+    },
+  }
+}
+```
+
+
+### Using Agenda
+
+The agenda displays tasks and calendar events from your markdown files.
+
+**Navigation:**
+- `[` - Cycle to previous view
+- `]` - Cycle to next view
+- `q` - Close agenda buffer
+
+**Default Views:**
+1. **Tasks** - Shows TODO/IN_PROGRESS items grouped by file
+2. **Calendar** - Shows scheduled events (10-day range)
+
+**Customizing Views:**
+You can define custom views in your config (see Configuration Options below). Views are processed through a filter → sort → group → render pipeline.
 
 
 ### Refiling
@@ -202,22 +292,38 @@ opts = {
 
 ```lua
 opts = {
+  -- Default keymaps
   keymaps = {
-    capture = "<leader>on",
-    agenda = "<leader>ov",
+    capture = "<leader>oc",
+    agenda = "<leader>oa",
+    find_file = "<leader>off",
+    find_heading = "<leader>ofh",
+    refile_to_file = "<leader>orf",
+    refile_to_heading = "<leader>orh",
+    open_quick_note = "<leader>z",
+    sync_all = "<leader>oS",
   },
-  picker = "telescope", -- or "snacks"
-  window_method = "float", -- or "horizontal"
+
+  picker = "snacks",  -- or "telescope"
+  window_method = "vertical",  -- or "float" or "horizontal"
+
+  -- Capture templates
   captures = {
-    default_template = "inbox",
+    default_template = "todo",
     templates = {
-      inbox = {
-        file = "~/notes/inbox.md",
-        heading = "Inbox",
-        template = "- [ ] %t %?",
+      todo = {
+        filename = "~/notes/todo.md",
+        heading = "TODO's",
+        template = "# TODO %? \n %u",
       },
     },
-  }
+  },
+
+  -- Paths for refile operations
+  refile_paths = { "~/notes" },
+
+  -- Quick note directory
+  quick_note_file = "~/notes/quick_notes/",
 }
 ```
 
