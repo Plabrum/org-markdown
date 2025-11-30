@@ -33,9 +33,9 @@ function M.register()
 		desc = "OrgMarkdown: Refile to File",
 	})
 
-	-- vim.api.nvim_create_user_command("MarkdownRefileHeading", refile.to_heading, {
-	-- 	desc = "OrgMarkdown: Refile to Heading",
-	-- })
+	vim.api.nvim_create_user_command("MarkdownRefileHeading", refile.to_heading, {
+		desc = "OrgMarkdown: Refile to Heading",
+	})
 
 	vim.api.nvim_create_user_command("MarkdownAgenda", agenda.show_tabbed_agenda, {
 		desc = "OrgMarkdown: Agenda",
@@ -45,9 +45,9 @@ function M.register()
 		desc = "OrgMarkdown: Open Markdown File",
 	})
 
-	-- vim.api.nvim_create_user_command("MarkdownFindHeading", find.open_heading_picker, {
-	-- 	desc = "OrgMarkdown: Open Heading in File",
-	-- })
+	vim.api.nvim_create_user_command("MarkdownFindHeading", find.open_heading_picker, {
+		desc = "OrgMarkdown: Open Heading in File",
+	})
 
 	-- Add configurable keymaps
 	local keymaps = config.keymaps or {}
@@ -66,13 +66,18 @@ function M.register()
 		silent = true,
 	})
 
-	-- vim.keymap.set("n", keymaps.find_heading, "<cmd>MarkdownFindHeading<CR>", {
-	-- 	desc = "OrgMarkdown: Find Heading in File",
-	-- 	silent = true,
-	-- })
+	vim.keymap.set("n", keymaps.find_heading, "<cmd>MarkdownFindHeading<CR>", {
+		desc = "OrgMarkdown: Find Heading in File",
+		silent = true,
+	})
 
 	vim.keymap.set("n", keymaps.refile_to_file, "<cmd>MarkdownRefileFile<CR>", {
 		desc = "OrgMarkdown: Refile to file",
+		silent = true,
+	})
+
+	vim.keymap.set("n", keymaps.refile_to_heading, "<cmd>MarkdownRefileHeading<CR>", {
+		desc = "OrgMarkdown: Refile to heading",
 		silent = true,
 	})
 
@@ -87,10 +92,6 @@ function M.register()
 			syntax.setup_buffer_syntax(args.buf)
 		end,
 	})
-	-- vim.keymap.set("n", keymaps.refile_to_heading, "<cmd>MarkdownRefileHeading<CR>", {
-	-- 	desc = "OrgMarkdown: Refile to heading",
-	-- 	silent = true,
-	-- })
 
 	for name, recipe in pairs(quick_note.recipes) do
 		-- 1. Create the user command

@@ -89,4 +89,56 @@ T["find_markdown_files"]["handles permission errors gracefully"] = function()
 	helpers.cleanup_temp(workspace)
 end
 
+T["find_markdown_files - respects refile_heading_ignore patterns"] = function()
+	-- Save original config
+	local original_ignore = config.refile_heading_ignore
+	local original_paths = config.refile_paths
+
+	-- Create test directory structure
+	local test_dir = "/tmp/org-markdown-test-ignore"
+	vim.fn.mkdir(test_dir, "p")
+	vim.fn.mkdir(test_dir .. "/archive", "p")
+
+	-- Create test files
+	local test_files = {
+		test_dir .. "/notes.md",
+		test_dir .. "/calendar.md",
+		test_dir .. "/tasks.md",
+		test_dir .. "/archive/old.md",
+	}
+
+	for _, file in ipairs(test_files) do
+		vim.fn.writefile({ "# Test" }, file)
+	end
+
+	-- Test 1: No ignore patterns - should find all files
+	config.refile_paths = { test_dir }
+	config.refile_heading_ignore = {}
+	local files = queries.find_markdown_files()
+	MiniTest.expect.equality(#files, 4, "Should find all 4 markdown files")
+
+	-- Test 2: Ignore exact filename
+	config.refile_heading_ignore = { "calendar.md" }
+	files = queries.find_markdown_files()
+	MiniTest.expect.equality(#files, 3, "Should ignore calendar.md")
+	for _, file in ipairs(files) do
+		MiniTest.expect.no_equality(file:match("calendar%.md$"), "calendar.md", "Should not contain calendar.md")
+	end
+
+	-- Test 3: Ignore with wildcard pattern
+	config.refile_heading_ignore = { "archive/*" }
+	files = queries.find_markdown_files()
+	MiniTest.expect.equality(#files, 3, "Should ignore archive directory")
+
+	-- Test 4: Multiple ignore patterns
+	config.refile_heading_ignore = { "calendar.md", "archive/*" }
+	files = queries.find_markdown_files()
+	MiniTest.expect.equality(#files, 2, "Should ignore calendar.md and archive/*")
+
+	-- Cleanup
+	vim.fn.delete(test_dir, "rf")
+	config.refile_heading_ignore = original_ignore
+	config.refile_paths = original_paths
+end
+
 return T

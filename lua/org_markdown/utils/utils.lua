@@ -617,4 +617,58 @@ function M.trim_trailing_whitespace(lines)
 	return trimmed
 end
 
+--- Extract all headings from a file
+--- @param filepath string Path to file
+--- @return table Array of {text, level, line_num}
+function M.extract_headings(filepath)
+	local lines = M.read_lines(filepath)
+	local headings = {}
+
+	for i, line in ipairs(lines) do
+		local level, text = line:match("^(#+)%s*(.*)")
+		if level then
+			table.insert(headings, {
+				text = text,
+				level = #level,
+				line_num = i,
+			})
+		end
+	end
+
+	return headings
+end
+
+--- Get all headings across all markdown files
+--- @param opts? table Optional { files?: string[] } to override file list
+--- @return table Array of heading items with filepath, filename, heading_text, etc.
+function M.get_all_headings(opts)
+	opts = opts or {}
+	local queries = require("org_markdown.utils.queries")
+	local frontmatter = require("org_markdown.utils.frontmatter")
+
+	local files = opts.files or queries.find_markdown_files()
+	local all_headings = {}
+
+	for _, filepath in ipairs(files) do
+		local file_display_name = frontmatter.get_display_name(filepath)
+		local headings = M.extract_headings(filepath)
+
+		for _, heading in ipairs(headings) do
+			local indent = string.rep("  ", heading.level - 1)
+			table.insert(all_headings, {
+				filepath = filepath,
+				filename = file_display_name,
+				heading_text = heading.text,
+				heading_level = heading.level,
+				line_num = heading.line_num,
+				display = indent .. heading.text,
+				-- Add searchable text field for fuzzy matching
+				text = heading.text .. " " .. file_display_name,
+			})
+		end
+	end
+
+	return all_headings
+end
+
 return M

@@ -1,14 +1,17 @@
 local M = {}
 local datetime = require("org_markdown.utils.datetime")
 
-local valid_states = {
-	TODO = true,
-	IN_PROGRESS = true,
-	WAITING = true,
-	CANCELLED = true,
-	DONE = true,
-	BLOCKED = true,
-}
+-- Build valid states from config dynamically
+-- Fallback to default states if config not yet loaded
+local function get_valid_states()
+	local config = require("org_markdown.config")
+	local states = config.status_states or { "TODO", "IN_PROGRESS", "DONE" }
+	local valid = {}
+	for _, state in ipairs(states) do
+		valid[state] = true
+	end
+	return valid
+end
 
 -- Pre-defined patterns for single-pass parsing
 local PATTERNS = {
@@ -24,7 +27,7 @@ local PATTERNS = {
 function M.parse_state(line)
 	-- Match the full word after hash+space
 	local candidate = line:match("^#+%s+([%u_]+)")
-	if candidate and valid_states[candidate] then
+	if candidate and get_valid_states()[candidate] then
 		return candidate
 	end
 	return nil
@@ -41,7 +44,7 @@ function M.parse_text(line)
 
 	-- Remove leading state if valid
 	local state = text:match("^([%u_]+)%s+")
-	if state and valid_states[state] then
+	if state and get_valid_states()[state] then
 		text = text:gsub("^" .. state .. "%s+", "")
 	end
 	-- Remove leading priority like [#A]
