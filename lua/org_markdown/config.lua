@@ -31,11 +31,6 @@ local M = {
 				filename = "~/notes/todo.md",
 				heading = "TODO's",
 			},
-			["notes"] = {
-				template = "#  %?",
-				filename = "~/notes/notes.md",
-				heading = "Notes",
-			},
 		},
 	},
 	agendas = {
@@ -56,22 +51,8 @@ local M = {
 				display = { format = "timeline" },
 			},
 			{
-				id = "calendar_blocks",
-				title = "Calendar (Blocks)",
-				source = "calendar",
-				filters = {
-					date_range = { days = 10, offset = 0 },
-				},
-				sort = {
-					by = "date",
-					order = "asc",
-				},
-				group_by = "date",
-				display = { format = "blocks" },
-			},
-			{
-				id = "calendar_compact",
-				title = "Calendar (Compact)",
+				id = "calendar",
+				title = "Calendar (10-Day Timeline)",
 				source = "calendar",
 				filters = {
 					date_range = { days = 10, offset = 0 },
@@ -221,9 +202,38 @@ end
 -- Runtime config (created fresh on each setup)
 M._runtime = nil
 
+-- Register with neoconf for autocomplete (only runs once)
+local neoconf_registered = false
+local function register_neoconf()
+	if neoconf_registered then
+		return
+	end
+	local ok, neoconf_plugins = pcall(require, "neoconf.plugins")
+	if ok then
+		neoconf_plugins.register({
+			name = "org_markdown",
+			on_schema = function(schema)
+				schema:import("org_markdown", M._defaults)
+			end,
+		})
+		neoconf_registered = true
+	end
+end
+
 function M.setup(user_config)
-	-- Create fresh runtime config
-	M._runtime = merge_tables(M._defaults, user_config or {})
+	-- Register schema for autocomplete
+	register_neoconf()
+
+	-- Try to load neoconf settings if available
+	local neoconf_config = {}
+	local ok, neoconf = pcall(require, "neoconf")
+	if ok then
+		neoconf_config = neoconf.get("org_markdown") or {}
+	end
+
+	-- Merge: defaults < user_config < neoconf (neoconf has highest priority)
+	local merged = merge_tables(M._defaults, user_config or {})
+	M._runtime = merge_tables(merged, neoconf_config)
 
 	-- Validate views after merging
 	if M._runtime.agendas and M._runtime.agendas.views then
