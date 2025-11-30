@@ -38,34 +38,39 @@ function M.setup(plugin_config)
 end
 
 -- ============================================================================
--- CALENDAR ACCESS (AppleScript)
+-- CALENDAR ACCESS (Swift)
 -- ============================================================================
 
---- Get list of all available calendars from Calendar.app
+--- Get list of all available calendars from Calendar.app (using Swift helper)
 --- @return table|nil, string|nil calendar_names, error
 local function get_available_calendars()
-	local script = [[
-tell application "Calendar"
-	set calNames to {}
-	repeat with cal in every calendar
-		set end of calNames to name of cal
-	end repeat
-	return calNames
-end tell
-]]
+	-- Get path to Swift helper script
+	local script_dir = vim.fn.fnamemodify(debug.getinfo(1, "S").source:sub(2), ":h")
+	local swift_script = script_dir .. "/calendar_fetch.swift"
 
-	local output = vim.fn.systemlist({ "osascript", "-e", script })
-	if vim.v.shell_error ~= 0 then
-		return nil, "Calendar access denied. Grant permissions in System Preferences > Privacy & Security > Automation"
+	-- Check if Swift script exists
+	if vim.fn.filereadable(swift_script) == 0 then
+		return nil, "Calendar Swift helper not found: " .. swift_script
 	end
 
-	if #output == 0 or output[1] == "" then
+	-- Execute Swift script in list mode
+	local cmd = string.format("%s --list-calendars", vim.fn.shellescape(swift_script))
+	local output = vim.fn.systemlist(cmd)
+
+	if vim.v.shell_error ~= 0 then
+		local error_msg = table.concat(output, "\n")
+		if error_msg == "" then
+			error_msg = "Calendar access denied. Grant permissions in System Preferences > Privacy & Security"
+		end
+		return nil, error_msg
+	end
+
+	if #output == 0 then
 		return {}, nil
 	end
 
-	-- Parse: "cal1, cal2, cal3" -> { "cal1", "cal2", "cal3" }
-	local calendars = vim.split(output[1], ", ")
-	return calendars, nil
+	-- Each line is a calendar name
+	return output, nil
 end
 
 --- Fetch events from Calendar.app for specified date range

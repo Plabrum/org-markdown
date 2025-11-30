@@ -26,10 +26,27 @@ sem.wait()
 // -----------------------------------------------------------------------------
 // Parse command line arguments
 // -----------------------------------------------------------------------------
-// Usage: calendar_fetch.swift <calendar_name1>,<calendar_name2>,... <days_behind> <days_ahead>
+// Usage: calendar_fetch.swift <calendar_names> <days_behind> <days_ahead>
+// Special mode: calendar_fetch.swift --list-calendars
+guard CommandLine.arguments.count >= 2 else {
+    fputs("Usage: \(CommandLine.arguments[0]) <calendar_names|--list-calendars> <days_behind> <days_ahead>\n", stderr)
+    fputs("Example: \(CommandLine.arguments[0]) 'icloud,work' 0 30\n", stderr)
+    fputs("         \(CommandLine.arguments[0]) --list-calendars\n", stderr)
+    exit(1)
+}
+
+// Handle --list-calendars mode
+if CommandLine.arguments[1] == "--list-calendars" {
+    let allCalendars = store.calendars(for: .event)
+    for cal in allCalendars {
+        print(cal.title)
+    }
+    exit(0)
+}
+
+// Normal mode - parse arguments
 guard CommandLine.arguments.count >= 4 else {
     fputs("Usage: \(CommandLine.arguments[0]) <calendar_names> <days_behind> <days_ahead>\n", stderr)
-    fputs("Example: \(CommandLine.arguments[0]) 'icloud,work' 0 30\n", stderr)
     exit(1)
 }
 
