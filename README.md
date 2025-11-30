@@ -145,27 +145,54 @@ opts = {
 
 The sync system is extensible! You can add plugins for GitHub issues, Todoist, Notion, etc.
 
-Example plugin structure:
+**Plugin Interface:**
 ```lua
 -- lua/my_sync_plugin.lua
 return {
-  name = "github_issues",
-  description = "Sync GitHub issues",
-  default_config = { repo = "user/repo", token_env = "GITHUB_TOKEN" },
-  command_name = "MarkdownSyncGitHub",
-  keymap = "<leader>osg",
-  sync = function()
-    -- Fetch and return events in standard format
+  name = "plugin_id",                     -- Required: unique identifier
+  sync = function()                       -- Required: main sync function
     return { events = {...}, stats = {...} }
-  end
+  end,
+
+  -- Optional fields:
+  description = "Human-readable name",    -- For UI/notifications
+  default_config = {},                    -- Merged into config.sync.plugins[name]
+  setup = function(config) end,           -- Validation/init (return false to disable)
+  supports_auto_sync = true,              -- Enable auto-sync support
+  command_name = "MarkdownSyncPlugin",    -- Override default command
+  keymap = "<leader>osp",                 -- Default keymap
 }
 ```
 
-Then in your config:
+**Event Format:**
+```lua
+{
+  events = {
+    {
+      title = "Event Title",                                         -- Required
+      start_date = { year = 2025, month = 11, day = 28, day_name = "Thu" },
+      end_date = { ... },       -- Optional (multi-day)
+      start_time = "14:00",     -- Optional (24hr)
+      end_time = "15:00",       -- Optional
+      all_day = false,          -- Boolean
+      tags = { "tag1" },        -- Array
+      body = "Description",     -- Optional
+    }
+  },
+  stats = { count = 5, source = "GitHub" }  -- Optional
+}
+```
+
+**Usage:**
 ```lua
 opts = {
   sync = {
-    external_plugins = { "my_sync_plugin" }
+    external_plugins = { "my_sync_plugin" },
+    plugins = {
+      my_sync_plugin = {
+        -- Plugin-specific config here
+      }
+    }
   }
 }
 ```
