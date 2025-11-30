@@ -366,7 +366,8 @@ local function create_horizontal_window(buf, opts)
 	vim.api.nvim_win_set_buf(win, buf)
 	vim.api.nvim_win_set_height(win, opts.height or math.floor(vim.o.lines * 0.3))
 
-	if opts.title then
+	-- Only add title to buffer content for scratch buffers, not file buffers
+	if opts.title and not opts.filepath then
 		vim.api.nvim_buf_set_lines(buf, 0, 0, false, {
 			"# " .. opts.title,
 			"", -- padding
@@ -392,7 +393,8 @@ local function create_vsplit(buf, opts)
 	vim.api.nvim_win_set_buf(win, buf)
 	vim.api.nvim_win_set_width(win, opts.width or math.floor(vim.o.columns * 0.3))
 
-	if opts.title then
+	-- Only add title to buffer content for scratch buffers, not file buffers
+	if opts.title and not opts.filepath then
 		vim.api.nvim_buf_set_lines(buf, 0, 0, false, {
 			"# " .. opts.title,
 			"", -- padding
@@ -447,7 +449,8 @@ local function create_vertical_window(buf, opts)
 		opts.persist_window = true
 	end
 
-	if opts.title then
+	-- Only add title to buffer content for scratch buffers, not file buffers
+	if opts.title and not opts.filepath then
 		vim.api.nvim_buf_set_lines(buf, 0, 0, false, {
 			"# " .. opts.title,
 			"",
@@ -484,6 +487,39 @@ function M.open_window(opts)
 		return create_vertical_window(buf, opts)
 	else
 		error("Unknown window method: " .. method)
+	end
+end
+
+-- Update window title (works for both floating and split windows)
+function M.set_window_title(win, title)
+	if not vim.api.nvim_win_is_valid(win) then
+		return
+	end
+
+	local win_config = vim.api.nvim_win_get_config(win)
+	if win_config.relative and win_config.relative ~= "" then
+		-- Floating window
+		win_config.title = title
+		vim.api.nvim_win_set_config(win, win_config)
+	end
+	-- For split windows, title is typically shown in statusline or buffer content
+	-- which is handled elsewhere
+end
+
+-- Update window footer (works for both floating and split windows)
+function M.set_window_footer(win, footer)
+	if not vim.api.nvim_win_is_valid(win) then
+		return
+	end
+
+	local win_config = vim.api.nvim_win_get_config(win)
+	if win_config.relative and win_config.relative ~= "" then
+		-- Floating window
+		win_config.footer = footer
+		vim.api.nvim_win_set_config(win, win_config)
+	else
+		-- Split window
+		vim.wo[win].statusline = footer
 	end
 end
 

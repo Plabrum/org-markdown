@@ -3,6 +3,7 @@ local queries = require("org_markdown.utils.queries")
 local config = require("org_markdown.config")
 local picker = require("org_markdown.utils.picker")
 local async = require("org_markdown.utils.async")
+local frontmatter = require("org_markdown.utils.frontmatter")
 
 local M = {}
 
@@ -99,16 +100,24 @@ function M.to_file()
 	local files = queries.find_markdown_files()
 
 	local items = vim.tbl_map(function(file)
-		return { value = file, file = file }
+		local display_name = frontmatter.get_display_name(file)
+		return { value = file, file = file, name = display_name }
 	end, files)
 
 	picker.pick(items, {
 		prompt = "Refile to file:",
 		kind = "files",
 		format_item = function(item)
-			return {
-				{ vim.fn.fnamemodify(item.value, ":~:."), "Directory" },
-			}
+			-- Show display name (from frontmatter or filename) with path as secondary info
+			local path_hint = vim.fn.fnamemodify(item.value, ":~:.:h")
+			if path_hint == "." then
+				return { { item.name, "Directory" } }
+			else
+				return {
+					{ item.name, "Directory" },
+					{ " (" .. path_hint .. ")", "Comment" },
+				}
+			end
 		end,
 		on_confirm = function(item)
 			-- TRANSACTION ORDER: write → verify → delete

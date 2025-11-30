@@ -6,5 +6,4 @@ repos:
         entry: stylua
         language: system
         types: [lua]
-        args: [--check]
         files: ^lua/

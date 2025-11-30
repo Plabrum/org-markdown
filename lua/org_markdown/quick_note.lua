@@ -57,6 +57,63 @@ function M.open_quick_note(recipe_key)
 
 	-- Set cursor to beginning of file
 	utils.set_cursor(win, 0, 0, "n")
+
+	-- Setup recipe cycling if multiple recipes exist
+	local recipe_keys = vim.tbl_keys(M.recipes)
+	table.sort(recipe_keys) -- Ensure consistent order
+
+	if #recipe_keys > 1 then
+		local cycler = require("org_markdown.utils.cycler")
+
+		-- Find current recipe index
+		local current_index = 1
+		for i, key in ipairs(recipe_keys) do
+			if key == recipe_key then
+				current_index = i
+				break
+			end
+		end
+
+		vim.b[buf].quicknote_recipe_index = current_index
+
+		local cycle_instance = cycler.create(buf, win, {
+			items = recipe_keys,
+			get_index = function(buf)
+				return vim.b[buf].quicknote_recipe_index or 1
+			end,
+			set_index = function(buf, index)
+				vim.b[buf].quicknote_recipe_index = index
+			end,
+			on_cycle = function(buf, win, new_recipe_key, index, total)
+				-- Save current buffer before switching
+				if vim.api.nvim_buf_is_valid(buf) and vim.bo[buf].modified then
+					pcall(function()
+						vim.api.nvim_buf_call(buf, function()
+							vim.cmd("silent! write")
+						end)
+					end)
+				end
+
+				-- Close current window (use pcall to handle "last window" case)
+				if vim.api.nvim_win_is_valid(win) then
+					pcall(vim.api.nvim_win_close, win, true)
+				end
+
+				-- Open new quicknote
+				M.open_quick_note(new_recipe_key)
+
+				-- Return false to indicate buffer was closed, don't update footer
+				return false
+			end,
+			get_footer = function(recipe_key, index, total)
+				local r = M.recipes[recipe_key]
+				return string.format("[%d/%d] %s | ] next | [ prev | Auto-saved | q close", index, total, r.title)
+			end,
+			memory_id = "quicknote",
+		})
+
+		cycle_instance:setup()
+	end
 end
 
 M.recipes = {

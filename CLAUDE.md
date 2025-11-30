@@ -42,8 +42,8 @@ The plugin follows a modular architecture with clear separation of concerns:
 - Scans markdown files for TODO/IN_PROGRESS headings and scheduled dates
 - Parses tasks using `parser.parse_headline()` which extracts state, priority, dates, and tags
 - Fully configurable view system with filter → sort → group → render pipeline
-- Views are defined in `config.agendas.views` with default "tasks", "calendar_blocks", and "calendar_compact" views
-- Supports tabbed navigation between multiple views via `config.agendas.tabbed_view`
+- Views are defined as an array in `config.agendas.views` with default "tasks", "calendar_blocks", and "calendar_compact" views
+- All views are automatically available for tabbed navigation using `[` and `]` keys, in the order defined
 - Built-in formatters: "blocks", "timeline"
 - Date formats: `<YYYY-MM-DD>` for tracked/scheduled items, `[YYYY-MM-DD]` for non-agenda timestamps
 
@@ -103,8 +103,7 @@ User config is deeply merged into defaults via `merge_tables()` in `config.lua`.
 - `window_method`: "float", "vertical", or "horizontal"
 - `keymaps`: all command keybindings
 - `checkbox_states` and `status_states`: cycling behavior
-- `agendas.views`: custom agenda view definitions (see Agenda Views section below)
-- `agendas.tabbed_view`: tabbed navigation configuration
+- `agendas.views`: array of agenda view definitions (see Agenda Views section below)
 - `sync.plugins.*`: per-plugin configuration (calendar, external plugins, etc.)
 - `sync.external_plugins`: array of external plugin module names to load
 
@@ -137,10 +136,11 @@ User prompts and capture buffers use the custom async system. Wrap async functio
 The agenda system uses a configurable view architecture that processes items through a filter → sort → group → render pipeline.
 
 #### View Configuration Structure
-Each view in `config.agendas.views` has the following structure:
+Views are defined as an array in `config.agendas.views`. Each view has the following structure:
 ```lua
 {
-  title = "View Title",           -- Displayed at top of buffer
+  id = "view_id",                  -- Required: Unique identifier for this view
+  title = "View Title",            -- Displayed at top of buffer
   source = "tasks",                -- "tasks", "calendar", or "all"
   filters = {                      -- Optional: filter items
     states = { "TODO", "IN_PROGRESS" },
@@ -162,48 +162,43 @@ Each view in `config.agendas.views` has the following structure:
 
 #### Example Custom Views
 ```lua
--- High-priority work items
-config.agendas.views.urgent = {
-  title = "Urgent Work Items",
-  source = "tasks",
-  filters = {
-    states = { "TODO", "IN_PROGRESS" },
-    priorities = { "A" },
-    tags = { "work" }
+-- Define custom views as an array (order matters - defines tab order)
+config.agendas.views = {
+  {
+    id = "urgent",
+    title = "Urgent Work Items",
+    source = "tasks",
+    filters = {
+      states = { "TODO", "IN_PROGRESS" },
+      priorities = { "A" },
+      tags = { "work" }
+    },
+    sort = { by = "date", order = "asc" },
+    display = { format = "timeline" }
   },
-  sort = { by = "date", order = "asc" },
-  display = { format = "timeline" }
-}
-
--- This week's calendar grouped by date
-config.agendas.views.week = {
-  title = "This Week",
-  source = "calendar",
-  filters = {
-    date_range = { days = 7, offset = 0 }
+  {
+    id = "week",
+    title = "This Week",
+    source = "calendar",
+    filters = {
+      date_range = { days = 7, offset = 0 }
+    },
+    sort = { by = "date", order = "asc" },
+    group_by = "date",
+    display = { format = "blocks" }
   },
-  sort = { by = "date", order = "asc" },
-  group_by = "date",
-  display = { format = "blocks" }
-}
-
--- All items grouped by file
-config.agendas.views.by_file = {
-  title = "Tasks by File",
-  source = "all",
-  sort = { by = "file", order = "asc" },
-  group_by = "file",
-  display = { format = "timeline" }
+  {
+    id = "by_file",
+    title = "Tasks by File",
+    source = "all",
+    sort = { by = "file", order = "asc" },
+    group_by = "file",
+    display = { format = "timeline" }
+  }
 }
 ```
 
-To use custom views in the tabbed interface:
-```lua
-config.agendas.tabbed_view = {
-  enabled = true,
-  views = { "urgent", "week", "tasks", "calendar" }
-}
-```
+**Note**: Views are defined as an array. When you provide custom views in your config, they **replace** the default views entirely. The order you define them determines the tab order when cycling with `[` and `]` keys.
 
 ### Sync Plugin Development
 When creating a sync plugin:
