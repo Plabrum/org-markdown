@@ -366,7 +366,8 @@ local function create_horizontal_window(buf, opts)
 	vim.api.nvim_win_set_buf(win, buf)
 	vim.api.nvim_win_set_height(win, opts.height or math.floor(vim.o.lines * 0.3))
 
-	if opts.title then
+	-- Only add title to buffer content for scratch buffers, not file buffers
+	if opts.title and not opts.filepath then
 		vim.api.nvim_buf_set_lines(buf, 0, 0, false, {
 			"# " .. opts.title,
 			"", -- padding
@@ -392,7 +393,8 @@ local function create_vsplit(buf, opts)
 	vim.api.nvim_win_set_buf(win, buf)
 	vim.api.nvim_win_set_width(win, opts.width or math.floor(vim.o.columns * 0.3))
 
-	if opts.title then
+	-- Only add title to buffer content for scratch buffers, not file buffers
+	if opts.title and not opts.filepath then
 		vim.api.nvim_buf_set_lines(buf, 0, 0, false, {
 			"# " .. opts.title,
 			"", -- padding
@@ -447,7 +449,8 @@ local function create_vertical_window(buf, opts)
 		opts.persist_window = true
 	end
 
-	if opts.title then
+	-- Only add title to buffer content for scratch buffers, not file buffers
+	if opts.title and not opts.filepath then
 		vim.api.nvim_buf_set_lines(buf, 0, 0, false, {
 			"# " .. opts.title,
 			"",

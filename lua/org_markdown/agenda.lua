@@ -14,6 +14,16 @@ vim.api.nvim_set_hl(0, "OrgInProgress", { fg = "#f0c000", bold = true })
 vim.api.nvim_set_hl(0, "OrgDone", { fg = "#5fd75f", bold = true })
 vim.api.nvim_set_hl(0, "OrgTitle", { fg = "#87afff", bold = true })
 
+-- Helper to find view by ID
+local function find_view(view_id)
+	for _, view in ipairs(config.agendas.views) do
+		if view.id == view_id then
+			return view
+		end
+	end
+	return nil
+end
+
 -- Helper function to cycle TODO state in a file
 local function cycle_todo_in_file(item)
 	local lines = utils.read_lines(item.file)
@@ -428,7 +438,7 @@ end
 
 -- Generic view function that works with any view definition
 function M.show_view(view_id)
-	local view_def = config.agendas.views and config.agendas.views[view_id]
+	local view_def = find_view(view_id)
 	if not view_def then
 		vim.notify("Unknown view: " .. view_id, vim.log.levels.ERROR)
 		return
@@ -485,26 +495,8 @@ end
 -- Tab cycling helper functions
 local refresh_tab_content -- Forward declaration
 
-local function cycle_tab(buf, win, direction)
-	local tab_config = config.agendas.tabbed_view or { views = { "tasks", "calendar" } }
-	local view_ids = tab_config.views
-	local num_tabs = #view_ids
-
-	local current = vim.b[buf].agenda_current_tab or 1
-	local next_tab
-
-	if direction > 0 then
-		next_tab = (current % num_tabs) + 1
-	else
-		next_tab = current == 1 and num_tabs or (current - 1)
-	end
-
-	vim.b[buf].agenda_current_tab = next_tab
-	refresh_tab_content(buf, win, next_tab, view_ids[next_tab])
-end
-
 refresh_tab_content = function(buf, win, tab_index, view_id)
-	local view_def = config.agendas.views and config.agendas.views[view_id]
+	local view_def = find_view(view_id)
 	if not view_def then
 		vim.notify("View not found: " .. view_id, vim.log.levels.ERROR)
 		return
@@ -519,23 +511,6 @@ refresh_tab_content = function(buf, win, tab_index, view_id)
 	vim.b[buf].agenda_line_to_item = line_to_item
 
 	highlight_states(buf, lines)
-
-	local tab_config = config.agendas.tabbed_view or { views = { "tasks", "calendar" } }
-	local num_tabs = #tab_config.views
-	local footer = string.format(
-		"Tab [%d/%d] %s | <Tab> cycle | ] next | [ prev | <CR> jump | q close",
-		tab_index,
-		num_tabs,
-		view_def.title or view_id
-	)
-
-	local win_config = vim.api.nvim_win_get_config(win)
-	if win_config.relative and win_config.relative ~= "" then
-		win_config.footer = footer
-		vim.api.nvim_win_set_config(win, win_config)
-	else
-		vim.wo[win].statusline = footer
-	end
 
 	if vim.api.nvim_win_is_valid(win) then
 		-- Set cursor to line 3 or last line if buffer is shorter
@@ -562,13 +537,39 @@ function M.show_tabbed_agenda()
 	vim.b[buf].agenda_current_tab = 1
 	vim.b[buf].agenda_line_to_item = {}
 
-	vim.keymap.set("n", "]", function()
-		cycle_tab(buf, win, 1)
-	end, { buffer = buf, silent = true })
+	-- Setup cycler for tab navigation
+	local cycler = require("org_markdown.utils.cycler")
 
-	vim.keymap.set("n", "[", function()
-		cycle_tab(buf, win, -1)
-	end, { buffer = buf, silent = true })
+	-- Extract view IDs in order (preserves config order)
+	local view_ids = {}
+	for _, view in ipairs(config.agendas.views) do
+		table.insert(view_ids, view.id)
+	end
+
+	local cycle_instance = cycler.create(buf, win, {
+		items = view_ids,
+		get_index = function(buf)
+			return vim.b[buf].agenda_current_tab or 1
+		end,
+		set_index = function(buf, index)
+			vim.b[buf].agenda_current_tab = index
+		end,
+		on_cycle = function(buf, win, view_id, index, total)
+			refresh_tab_content(buf, win, index, view_id)
+		end,
+		get_footer = function(view_id, index, total)
+			local view_def = find_view(view_id)
+			return string.format(
+				"Tab [%d/%d] %s | <Tab> cycle | ] next | [ prev | <CR> jump | q close",
+				index,
+				total,
+				view_def.title or view_id
+			)
+		end,
+		memory_id = "agenda",
+	})
+
+	cycle_instance:setup()
 
 	vim.keymap.set("n", "<CR>", function()
 		local cursor = vim.api.nvim_win_get_cursor(win)
@@ -588,8 +589,7 @@ function M.show_tabbed_agenda()
 		if item and cycle_todo_in_file(item) then
 			-- Refresh the current tab
 			local current_tab = vim.b[buf].agenda_current_tab or 1
-			local tab_config = config.agendas.tabbed_view or { views = { "tasks", "calendar" } }
-			local current_view_id = tab_config.views[current_tab]
+			local current_view_id = config.agendas.views[current_tab].id
 			refresh_tab_content(buf, win, current_tab, current_view_id)
 			-- Restore cursor position
 			if vim.api.nvim_win_is_valid(win) then
@@ -598,9 +598,8 @@ function M.show_tabbed_agenda()
 		end
 	end, { buffer = buf, silent = true })
 
-	-- Get first view from config
-	local tab_config = config.agendas.tabbed_view or { views = { "tasks", "calendar" } }
-	local first_view_id = tab_config.views[1]
+	-- Get first view from config (preserves order)
+	local first_view_id = config.agendas.views[1].id
 	refresh_tab_content(buf, win, 1, first_view_id)
 end
 

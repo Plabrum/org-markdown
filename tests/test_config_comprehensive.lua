@@ -54,11 +54,12 @@ T["merge"]["replaces arrays instead of merging"] = function()
 	MiniTest.expect.equality(states[2], "x")
 end
 
-T["merge"]["deep merges nested objects"] = function()
+T["merge"]["views array replacement"] = function()
 	config.setup({
 		agendas = {
 			views = {
-				custom = {
+				{
+					id = "custom",
 					title = "Custom View",
 					source = "tasks",
 				},
@@ -66,9 +67,10 @@ T["merge"]["deep merges nested objects"] = function()
 		},
 	})
 
-	-- Should have both default views AND custom
-	MiniTest.expect.no_equality(config.agendas.views.tasks, nil)
-	MiniTest.expect.no_equality(config.agendas.views.custom, nil)
+	-- Views is an array - should be REPLACED, not merged
+	MiniTest.expect.equality(#config.agendas.views, 1, "Should replace entire array")
+	MiniTest.expect.equality(config.agendas.views[1].id, "custom")
+	MiniTest.expect.equality(config.agendas.views[1].title, "Custom View")
 end
 
 T["validation"] = MiniTest.new_set()

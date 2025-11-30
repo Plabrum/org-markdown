@@ -63,6 +63,61 @@ function M.open_capture_buffer_async(content, cursor_row, cursor_col, tpl)
 		vim.api.nvim_buf_set_lines(buf, 0, -1, false, vim.split(content, "\n"))
 		utils.set_cursor(win, cursor_row, cursor_col, "i")
 
+		-- Setup template cycling if multiple templates exist
+		local template_names = vim.tbl_keys(config.captures.templates)
+		table.sort(template_names) -- Ensure consistent order
+
+		if #template_names > 1 then
+			local cycler = require("org_markdown.utils.cycler")
+
+			-- Find current template index
+			local current_index = 1
+			for i, name in ipairs(template_names) do
+				if name == tpl.name then
+					current_index = i
+					break
+				end
+			end
+
+			vim.b[buf].capture_template_index = current_index
+
+			local cycle_instance = cycler.create(buf, win, {
+				items = template_names,
+				get_index = function(buf)
+					return vim.b[buf].capture_template_index or 1
+				end,
+				set_index = function(buf, index)
+					vim.b[buf].capture_template_index = index
+				end,
+				on_cycle = function(buf, win, template_name, index, total)
+					-- Close current capture buffer
+					if vim.api.nvim_win_is_valid(win) then
+						vim.api.nvim_win_close(win, true)
+					end
+
+					-- Cancel the current promise by resolving with empty string
+					resolve("")
+
+					-- Open new capture with the new template
+					M.capture_template(template_name)
+
+					-- Return false to indicate buffer was closed, don't update footer
+					return false
+				end,
+				get_footer = function(template_name, index, total)
+					return string.format(
+						"[%d/%d] %s | ] next | [ prev | <C-c><C-c> save | <C-c><C-k> cancel",
+						index,
+						total,
+						template_name
+					)
+				end,
+				memory_id = "capture",
+			})
+
+			cycle_instance:setup()
+		end
+
 		-- TODO PAL: Refactor open_window so it can take, close_key and quit_keys and a callback for on_close and on_quit
 		vim.keymap.set("n", "<C-c><C-c>", function()
 			local joined = submit_buffer(buf)
@@ -236,7 +291,19 @@ local key_mapping = {
 -- Prompt and capture
 function M.capture_template(name)
 	async.run(function()
-		name = name or config.captures.default_template
+		-- If no name provided, use saved preference or default
+		if not name then
+			local cycler = require("org_markdown.utils.cycler")
+			local saved_index = cycler.get_memory("capture")
+			if saved_index then
+				local template_names = vim.tbl_keys(config.captures.templates)
+				table.sort(template_names)
+				name = template_names[saved_index] or config.captures.default_template
+			else
+				name = config.captures.default_template
+			end
+		end
+
 		local tpl = config.captures.templates[name]
 		if not tpl then
 			vim.notify("No capture template for: " .. name, vim.log.levels.ERROR)

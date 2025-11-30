@@ -41,7 +41,8 @@ local M = {
 	agendas = {
 		window_method = "float",
 		views = {
-			tasks = {
+			{
+				id = "tasks",
 				title = "Tasks (by priority)",
 				source = "tasks",
 				filters = {},
@@ -53,7 +54,8 @@ local M = {
 				group_by = nil,
 				display = { format = "timeline" },
 			},
-			calendar_blocks = {
+			{
+				id = "calendar_blocks",
 				title = "Calendar Blocks (7 days)",
 				source = "calendar",
 				filters = {
@@ -66,7 +68,8 @@ local M = {
 				group_by = "date",
 				display = { format = "blocks" },
 			},
-			calendar_compact = {
+			{
+				id = "calendar_compact",
 				title = "Calendar Compact Timeline (7 days)",
 				source = "calendar",
 				filters = {
@@ -79,10 +82,6 @@ local M = {
 				group_by = "date",
 				display = { format = "timeline" },
 			},
-		},
-		tabbed_view = {
-			enabled = true,
-			views = { "tasks", "calendar_blocks", "calendar_compact" },
 		},
 	},
 	window_method = "vertical",
@@ -221,8 +220,8 @@ function M.setup(user_config)
 
 	-- Validate views after merging
 	if M._runtime.agendas and M._runtime.agendas.views then
-		for view_id, view_def in pairs(M._runtime.agendas.views) do
-			validate_view(view_id, view_def)
+		for _, view_def in ipairs(M._runtime.agendas.views) do
+			validate_view(view_def.id, view_def)
 		end
 	end
 
