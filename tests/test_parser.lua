@@ -9,7 +9,7 @@ T["parse_heading - TODO with priority and tags"] = function()
 	local result = parser.parse_headline(line)
 	local tags = parser.extract_tags(line)
 	MiniTest.expect.equality(result.state, "TODO")
-	MiniTest.expect.equality(result.priority, "#A")
+	MiniTest.expect.equality(result.priority, "A")
 	MiniTest.expect.equality(result.text, "Write tests")
 	MiniTest.expect.equality(tags[1], "work")
 	MiniTest.expect.equality(tags[2], "urgent")
@@ -29,7 +29,7 @@ T["parse_heading - ignored DONE heading"] = function()
 	local line = "# DONE [#B] Completed work :done:"
 	local result = parser.parse_headline(line)
 	MiniTest.expect.equality(result.state, "DONE") -- parser no longer filters these
-	MiniTest.expect.equality(result.priority, "#B")
+	MiniTest.expect.equality(result.priority, "B")
 	MiniTest.expect.equality(result.text, "Completed work")
 end
 

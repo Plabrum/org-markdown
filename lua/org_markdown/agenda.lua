@@ -5,6 +5,8 @@ local parser = require("org_markdown.utils.parser")
 local formatter = require("org_markdown.utils.formatter")
 local queries = require("org_markdown.utils.queries")
 local editing = require("org_markdown.utils.editing")
+local agenda_formatters = require("org_markdown.agenda_formatters")
+local datetime = require("org_markdown.utils.datetime")
 
 local M = {}
 vim.api.nvim_set_hl(0, "OrgTodo", { fg = "#ff5f5f", bold = true })
@@ -106,17 +108,9 @@ local function parse_date_range(date_range_spec)
 		return nil
 	end
 
-	if date_range_spec.days then
-		-- Relative date range: { days = N, offset = 0 }
-		local offset = date_range_spec.offset or 0
-		local today = os.time()
-		local start_date = os.date("%Y-%m-%d", today + offset * 86400)
-		local end_date = os.date("%Y-%m-%d", today + (offset + date_range_spec.days - 1) * 86400)
-		return { from = start_date, to = end_date }
-	else
-		-- Absolute date range: { from = "YYYY-MM-DD", to = "YYYY-MM-DD" }
-		return date_range_spec
-	end
+	-- Delegate to datetime module for range calculation
+	local start_date, end_date = datetime.calculate_range(date_range_spec)
+	return { from = start_date, to = end_date }
 end
 
 -- Filter a single item based on filter specs
@@ -313,112 +307,16 @@ end
 local formatters = {
 	blocks = {
 		flat = function(item)
-			if item.all_day then
-				local tags_str = #item.tags > 0 and " :" .. table.concat(item.tags, ":") .. ":" or ""
-				return "▓▓ " .. item.title .. " (all-day)" .. tags_str
-			end
-
-			if item.start_time and item.end_time then
-				-- Create multi-line block
-				local box_width = 50
-				local title_with_tags = item.title
-				if #item.tags > 0 then
-					title_with_tags = title_with_tags .. " :" .. table.concat(item.tags, ":") .. ":"
-				end
-
-				-- Wrap text to fit in box
-				local lines = {}
-				local remaining = title_with_tags
-				while #remaining > 0 do
-					if #remaining <= box_width - 4 then
-						table.insert(lines, remaining)
-						break
-					else
-						local break_at = box_width - 4
-						for i = break_at, 1, -1 do
-							if remaining:sub(i, i):match("%s") then
-								break_at = i
-								break
-							end
-						end
-						table.insert(lines, vim.trim(remaining:sub(1, break_at)))
-						remaining = vim.trim(remaining:sub(break_at + 1))
-					end
-				end
-
-				-- Build the block
-				local result = {}
-				table.insert(result, string.format("┌─ %s %s┐", item.start_time, string.rep("─", box_width - 9)))
-				for _, line in ipairs(lines) do
-					table.insert(result, string.format("│ %-" .. (box_width - 2) .. "s │", line))
-				end
-				table.insert(result, string.format("└%s %s ─┘", string.rep("─", box_width - 9), item.end_time))
-
-				return table.concat(result, "\n")
-			elseif item.start_time then
-				local tags_str = #item.tags > 0 and " :" .. table.concat(item.tags, ":") .. ":" or ""
-				return item.start_time .. "  " .. item.title .. tags_str
-			else
-				local tags_str = #item.tags > 0 and " :" .. table.concat(item.tags, ":") .. ":" or ""
-				return item.title .. tags_str
-			end
+			return agenda_formatters.format_blocks(item, "")
 		end,
 
 		grouped = function(item)
-			if item.all_day then
-				local tags_str = #item.tags > 0 and " :" .. table.concat(item.tags, ":") .. ":" or ""
-				return "    ▓▓ " .. item.title .. " (all-day)" .. tags_str
-			end
-
-			if item.start_time and item.end_time then
-				-- Create multi-line block with indentation
-				local box_width = 50
-				local title_with_tags = item.title
-				if #item.tags > 0 then
-					title_with_tags = title_with_tags .. " :" .. table.concat(item.tags, ":") .. ":"
-				end
-
-				-- Wrap text to fit in box
-				local lines = {}
-				local remaining = title_with_tags
-				while #remaining > 0 do
-					if #remaining <= box_width - 4 then
-						table.insert(lines, remaining)
-						break
-					else
-						local break_at = box_width - 4
-						for i = break_at, 1, -1 do
-							if remaining:sub(i, i):match("%s") then
-								break_at = i
-								break
-							end
-						end
-						table.insert(lines, vim.trim(remaining:sub(1, break_at)))
-						remaining = vim.trim(remaining:sub(break_at + 1))
-					end
-				end
-
-				-- Build the block with indentation
-				local result = {}
-				table.insert(result, string.format("    ┌─ %s %s┐", item.start_time, string.rep("─", box_width - 9)))
-				for _, line in ipairs(lines) do
-					table.insert(result, string.format("    │ %-" .. (box_width - 2) .. "s │", line))
-				end
-				table.insert(result, string.format("    └%s %s ─┘", string.rep("─", box_width - 9), item.end_time))
-
-				return table.concat(result, "\n")
-			elseif item.start_time then
-				local tags_str = #item.tags > 0 and " :" .. table.concat(item.tags, ":") .. ":" or ""
-				return "    " .. item.start_time .. "  " .. item.title .. tags_str
-			else
-				local tags_str = #item.tags > 0 and " :" .. table.concat(item.tags, ":") .. ":" or ""
-				return "    " .. item.title .. tags_str
-			end
+			return agenda_formatters.format_blocks(item, "    ")
 		end,
 
 		group_header = function(group_key, group_by)
 			if group_by == "date" then
-				return "  " .. formatter.format_date(group_key)
+				return "  " .. datetime.format_display(group_key)
 			else
 				return group_key
 			end
@@ -427,79 +325,17 @@ local formatters = {
 
 	timeline = {
 		flat = function(item)
-			-- For tasks (with state), show: STATE [priority] title (time) :tags:
-			-- For calendar (no state), show: time title :tags:
-			local parts = {}
-
-			if item.state then
-				-- Task format: STATE [priority] title (time) :tags:
-				table.insert(parts, item.state)
-				if item.priority then
-					table.insert(parts, string.format("[%s]", item.priority))
-				end
-				table.insert(parts, item.title)
-
-				-- Add time inline if exists
-				if item.start_time then
-					local time_str = item.end_time and string.format("(%s-%s)", item.start_time, item.end_time)
-						or string.format("(%s)", item.start_time)
-					table.insert(parts, time_str)
-				end
-			else
-				-- Calendar format: time title :tags:
-				if item.all_day then
-					table.insert(parts, "[ALL-DAY]")
-				elseif item.start_time then
-					local time_str = item.end_time and item.start_time .. "-" .. item.end_time or item.start_time
-					table.insert(parts, time_str)
-				end
-				table.insert(parts, item.title)
-			end
-
-			local tags_str = #item.tags > 0 and " :" .. table.concat(item.tags, ":") .. ":" or ""
-			return table.concat(parts, " ") .. tags_str
+			return agenda_formatters.format_timeline(item, "")
 		end,
 
 		grouped = function(item)
-			-- For tasks (with state), show: STATE [priority] title (time) :tags:
-			-- For calendar (no state), show: time title :tags:
-			local parts = {}
-
-			if item.state then
-				-- Task format: STATE [priority] title (time) :tags:
-				table.insert(parts, item.state)
-				if item.priority then
-					table.insert(parts, string.format("[%s]", item.priority))
-				end
-				table.insert(parts, item.title)
-
-				-- Add time inline if exists
-				if item.start_time then
-					local time_str = item.end_time and string.format("(%s-%s)", item.start_time, item.end_time)
-						or string.format("(%s)", item.start_time)
-					table.insert(parts, time_str)
-				end
-			else
-				-- Calendar format: time title :tags:
-				if item.all_day then
-					table.insert(parts, "[ALL-DAY]")
-				elseif item.start_time then
-					local time_str = item.end_time and item.start_time .. "-" .. item.end_time or item.start_time
-					table.insert(parts, time_str)
-				end
-				table.insert(parts, item.title)
-			end
-
-			local tags_str = #item.tags > 0 and " :" .. table.concat(item.tags, ":") .. ":" or ""
-			return "    " .. table.concat(parts, " ") .. tags_str
+			return agenda_formatters.format_timeline(item, "    ")
 		end,
 
 		group_header = function(group_key, group_by)
 			if group_by == "date" then
-				local y, m, d = group_key:match("(%d+)%-(%d+)%-(%d+)")
-				local time = os.time({ year = y, month = m, day = d })
 				return "  "
-					.. os.date("%a %d %b", time)
+					.. datetime.format_display(group_key, "%a %d %b")
 					.. " ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
 			else
 				return group_key

@@ -1,6 +1,9 @@
 -- Ensure predictable working directory
 local cwd = vim.fn.getcwd()
 
+-- Add tests directory to Lua path for helpers module
+package.path = cwd .. "/tests/?.lua;" .. cwd .. "/tests/?/init.lua;" .. package.path
+
 -- Ensure your plugin and lazy.nvim are in the runtime path
 vim.opt.rtp:prepend(cwd)
 vim.opt.rtp:prepend(vim.fn.stdpath("data") .. "/lazy/lazy.nvim")

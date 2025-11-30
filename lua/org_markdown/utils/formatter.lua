@@ -1,9 +1,9 @@
 local M = {}
+local datetime = require("org_markdown.utils.datetime")
 
 function M.format_date(date_str)
-	local y, m, d = date_str:match("(%d+)%-(%d+)%-(%d+)")
-	local time = os.time({ year = y, month = m, day = d })
-	return os.date("%A %d %b", time)
+	-- Delegate to datetime module
+	return datetime.format_display(date_str)
 end
 
 return M

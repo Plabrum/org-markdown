@@ -78,14 +78,16 @@ The plugin follows a modular architecture with clear separation of concerns:
 **Sync Plugin System** (`sync/manager.lua` and `sync/plugins/`)
 - Extensible plugin architecture for syncing data from external sources
 - **Manager** (`sync/manager.lua`): Plugin registry, sync orchestration, event formatting, auto-sync timers
-- **Plugins** (`sync/plugins/*.lua`): Self-contained modules implementing standard interface
+- **Plugins** (`sync/plugins/`): Self-contained modules implementing standard interface
+  - Simple plugins: single `.lua` file
+  - Complex plugins: folder with `init.lua` and additional files (e.g., `calendar/`)
 - Plugin interface: `{ name, description, default_config, setup(), sync(), supports_auto_sync, command_name, keymap }`
 - Event format: Standard structure `{ title, start_date, end_date, start_time, end_time, all_day, tags, body }`
 - Marker-based file preservation: User content outside `<!-- BEGIN/END SYNC -->` markers is preserved
 - Concurrent sync protection: Per-plugin locks prevent simultaneous syncs
 - Auto-sync: Optional periodic sync via `vim.loop.new_timer()`
 - Built-in plugins:
-  - **Calendar** (`sync/plugins/calendar.lua`): macOS Calendar.app sync via AppleScript
+  - **Calendar** (`sync/plugins/calendar/`): macOS Calendar.app sync via Swift/AppleScript
     - Fetches events using AppleScript date filtering
     - Parses macOS date format ("Saturday, November 22, 2025 at 2:00:00 PM")
     - Supports multi-day events with `<date>--<date>` format
@@ -210,7 +212,7 @@ When creating a sync plugin:
 3. **Handle errors gracefully**: Return `nil, error_message` on failure
 4. **Use plugin config**: Access via `config.sync.plugins[plugin_name]`
 5. **Register in init.lua**: Add to `plugin_names` array or use `external_plugins` config
-6. **Example**: See `sync/plugins/calendar.lua` for reference implementation
+6. **Example**: See `sync/plugins/calendar/` for reference implementation
 
 Sync plugin interface:
 ```lua
@@ -232,7 +234,7 @@ Event data structure (returned by plugin sync()):
   events = {
     {
       title = "Event Title",
-      start_date = { year = 2025, month = 11, day = 28, day_name = "Thu" },
+      start_date = { year = 2025, month = 11, day = 28 },
       end_date = { ... },          -- Optional for multi-day events
       start_time = "14:00",         -- Optional for timed events (24-hour)
       end_time = "15:00",           -- Optional

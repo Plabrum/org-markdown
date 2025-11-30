@@ -26,10 +26,27 @@ sem.wait()
 // -----------------------------------------------------------------------------
 // Parse command line arguments
 // -----------------------------------------------------------------------------
-// Usage: calendar_fetch.swift <calendar_name1>,<calendar_name2>,... <days_behind> <days_ahead>
+// Usage: calendar_fetch.swift <calendar_names> <days_behind> <days_ahead>
+// Special mode: calendar_fetch.swift --list-calendars
+guard CommandLine.arguments.count >= 2 else {
+    fputs("Usage: \(CommandLine.arguments[0]) <calendar_names|--list-calendars> <days_behind> <days_ahead>\n", stderr)
+    fputs("Example: \(CommandLine.arguments[0]) 'icloud,work' 0 30\n", stderr)
+    fputs("         \(CommandLine.arguments[0]) --list-calendars\n", stderr)
+    exit(1)
+}
+
+// Handle --list-calendars mode
+if CommandLine.arguments[1] == "--list-calendars" {
+    let allCalendars = store.calendars(for: .event)
+    for cal in allCalendars {
+        print(cal.title)
+    }
+    exit(0)
+}
+
+// Normal mode - parse arguments
 guard CommandLine.arguments.count >= 4 else {
     fputs("Usage: \(CommandLine.arguments[0]) <calendar_names> <days_behind> <days_ahead>\n", stderr)
-    fputs("Example: \(CommandLine.arguments[0]) 'icloud,work' 0 30\n", stderr)
     exit(1)
 }
 
@@ -72,8 +89,8 @@ df.locale = Locale(identifier: "en_US_POSIX")
 df.dateFormat = "EEEE, MMMM d, yyyy 'at' h:mm:ss a"
 
 // -----------------------------------------------------------------------------
-// Output events in pipe-delimited format matching AppleScript output
-// Format: CALENDAR|TITLE|START|END|ALLDAY
+// Output events in pipe-delimited format with extended fields
+// Format: CALENDAR|TITLE|START|END|ALLDAY|LOCATION|URL|NOTES|UID
 // -----------------------------------------------------------------------------
 for ev in events {
     let calTitle = ev.calendar?.title ?? "Unknown"
@@ -82,5 +99,15 @@ for ev in events {
     let end = df.string(from: ev.endDate)
     let allDay = ev.isAllDay ? "true" : "false"
 
-    print("\(calTitle)|\(title)|\(start)|\(end)|\(allDay)")
+    let location = ev.location ?? ""
+    let url = ev.url?.absoluteString ?? ""
+    let notes = ev.notes ?? ""
+    let uid = ev.calendarItemIdentifier
+
+    // Escape pipe characters in text fields to prevent parsing issues
+    let escapedTitle = title.replacingOccurrences(of: "|", with: "\\|")
+    let escapedLocation = location.replacingOccurrences(of: "|", with: "\\|")
+    let escapedNotes = notes.replacingOccurrences(of: "|", with: "\\|")
+
+    print("\(calTitle)|\(escapedTitle)|\(start)|\(end)|\(allDay)|\(escapedLocation)|\(url)|\(escapedNotes)|\(uid)")
 }

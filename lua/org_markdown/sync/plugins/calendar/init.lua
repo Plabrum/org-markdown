@@ -1,4 +1,5 @@
 local config = require("org_markdown.config")
+local datetime = require("org_markdown.utils.datetime")
 
 local M = {
 	name = "calendar",
@@ -37,34 +38,39 @@ function M.setup(plugin_config)
 end
 
 -- ============================================================================
--- CALENDAR ACCESS (AppleScript)
+-- CALENDAR ACCESS (Swift)
 -- ============================================================================
 
---- Get list of all available calendars from Calendar.app
+--- Get list of all available calendars from Calendar.app (using Swift helper)
 --- @return table|nil, string|nil calendar_names, error
 local function get_available_calendars()
-	local script = [[
-tell application "Calendar"
-	set calNames to {}
-	repeat with cal in every calendar
-		set end of calNames to name of cal
-	end repeat
-	return calNames
-end tell
-]]
+	-- Get path to Swift helper script
+	local script_dir = vim.fn.fnamemodify(debug.getinfo(1, "S").source:sub(2), ":h")
+	local swift_script = script_dir .. "/calendar_fetch.swift"
 
-	local output = vim.fn.systemlist({ "osascript", "-e", script })
-	if vim.v.shell_error ~= 0 then
-		return nil, "Calendar access denied. Grant permissions in System Preferences > Privacy & Security > Automation"
+	-- Check if Swift script exists
+	if vim.fn.filereadable(swift_script) == 0 then
+		return nil, "Calendar Swift helper not found: " .. swift_script
 	end
 
-	if #output == 0 or output[1] == "" then
+	-- Execute Swift script in list mode
+	local cmd = string.format("%s --list-calendars", vim.fn.shellescape(swift_script))
+	local output = vim.fn.systemlist(cmd)
+
+	if vim.v.shell_error ~= 0 then
+		local error_msg = table.concat(output, "\n")
+		if error_msg == "" then
+			error_msg = "Calendar access denied. Grant permissions in System Preferences > Privacy & Security"
+		end
+		return nil, error_msg
+	end
+
+	if #output == 0 then
 		return {}, nil
 	end
 
-	-- Parse: "cal1, cal2, cal3" -> { "cal1", "cal2", "cal3" }
-	local calendars = vim.split(output[1], ", ")
-	return calendars, nil
+	-- Each line is a calendar name
+	return output, nil
 end
 
 --- Fetch events from Calendar.app for specified date range
@@ -124,59 +130,12 @@ end
 --- @param date_str string macOS date format
 --- @return table|nil date components { year, month, day, day_name, time }
 local function parse_macos_date(date_str)
-	if not date_str or date_str == "" then
-		return nil
+	-- Delegate to datetime module
+	local result = datetime.parse_macos_date(date_str)
+	if not result then
+		vim.notify("Failed to parse date: " .. (date_str or "nil"), vim.log.levels.WARN)
 	end
-
-	local month_map = {
-		January = 1,
-		February = 2,
-		March = 3,
-		April = 4,
-		May = 5,
-		June = 6,
-		July = 7,
-		August = 8,
-		September = 9,
-		October = 10,
-		November = 11,
-		December = 12,
-	}
-
-	-- Try parsing with time: "Saturday, November 22, 2025 at 2:00:00 PM"
-	local day_name, month_name, day, year, hour, min, sec, meridian =
-		date_str:match("(%a+), (%a+) (%d+), (%d+) at (%d+):(%d+):(%d+) (%a+)")
-
-	local time = nil
-	if day_name then
-		-- Has time - convert to 24-hour format
-		hour = tonumber(hour)
-		min = tonumber(min)
-
-		if meridian == "PM" and hour ~= 12 then
-			hour = hour + 12
-		elseif meridian == "AM" and hour == 12 then
-			hour = 0
-		end
-
-		time = string.format("%02d:%02d", hour, min)
-	else
-		-- Try parsing without time: "Saturday, November 22, 2025"
-		day_name, month_name, day, year = date_str:match("(%a+), (%a+) (%d+), (%d+)")
-
-		if not day_name then
-			vim.notify("Failed to parse date: " .. date_str, vim.log.levels.WARN)
-			return nil
-		end
-	end
-
-	return {
-		year = tonumber(year),
-		month = month_map[month_name],
-		day = tonumber(day),
-		day_name = day_name:sub(1, 3), -- "Sat"
-		time = time,
-	}
+	return result
 end
 
 --- Parse AppleScript output into events
@@ -187,14 +146,20 @@ local function parse_applescript_output(output)
 
 	for _, line in ipairs(output) do
 		if line ~= "" then
-			-- Format: CALENDAR|TITLE|START|END|ALLDAY
+			-- Format: CALENDAR|TITLE|START|END|ALLDAY|LOCATION|URL|NOTES|UID
 			local parts = vim.split(line, "|", { plain = true })
 			if #parts >= 5 then
 				local calendar = parts[1]
-				local title = parts[2]
+				local title = parts[2]:gsub("\\|", "|") -- Unescape pipes
 				local start_raw = parts[3]
 				local end_raw = parts[4]
 				local all_day_str = parts[5]
+
+				-- Extended fields (may not be present in older output)
+				local location = parts[6] and parts[6] ~= "" and parts[6]:gsub("\\|", "|") or nil
+				local url = parts[7] and parts[7] ~= "" and parts[7] or nil
+				local notes = parts[8] and parts[8] ~= "" and parts[8]:gsub("\\|", "|") or nil
+				local uid = parts[9] and parts[9] ~= "" and parts[9] or nil
 
 				local start_date = parse_macos_date(start_raw)
 				local end_date = parse_macos_date(end_raw)
@@ -206,6 +171,10 @@ local function parse_applescript_output(output)
 						start = start_date,
 						end_date = end_date,
 						all_day = all_day_str == "true",
+						location = location,
+						url = url,
+						notes = notes,
+						uid = uid,
 					}
 					table.insert(events, event)
 				end
@@ -224,14 +193,14 @@ end
 --- @param plugin_config table Plugin configuration
 --- @return string, string start_date, end_date (YYYY-MM-DD format)
 local function calculate_date_range(plugin_config)
-	local today = os.time()
 	local days_behind = plugin_config.days_behind or 0
 	local days_ahead = plugin_config.days_ahead or 30
 
-	local start_time = today - (days_behind * 86400)
-	local end_time = today + (days_ahead * 86400)
+	-- Convert to datetime module format: offset (negative for past), days (total range)
+	local offset = -days_behind
+	local total_days = days_behind + days_ahead + 1
 
-	return os.date("%Y-%m-%d", start_time), os.date("%Y-%m-%d", end_time)
+	return datetime.calculate_range({ days = total_days, offset = offset })
 end
 
 --- Filter calendars based on config (include/exclude lists)
@@ -326,6 +295,11 @@ function M.sync()
 			end_time = raw.end_date and raw.end_date.time,
 			all_day = raw.all_day,
 			tags = { sanitize_tag(raw.calendar) },
+
+			id = raw.uid,
+			location = raw.location,
+			source_url = raw.url,
+			body = raw.notes,
 		}
 		table.insert(events, event)
 	end

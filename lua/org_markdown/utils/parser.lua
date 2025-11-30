@@ -1,4 +1,5 @@
 local M = {}
+local datetime = require("org_markdown.utils.datetime")
 
 local valid_states = {
 	TODO = true,
@@ -7,6 +8,17 @@ local valid_states = {
 	CANCELLED = true,
 	DONE = true,
 	BLOCKED = true,
+}
+
+-- Pre-defined patterns for single-pass parsing
+local PATTERNS = {
+	heading_prefix = "^(#+)%s+",
+	state = "^([A-Z_]+)%s+",
+	priority = "%[#([A-Z])%]",
+	tracked_date = "<([^>]+)>",
+	untracked_date = "%[([^%]]+)%]",
+	time = "(%d%d):(%d%d)",
+	tag_block = ":([%w_-]+):",
 }
 
 function M.parse_state(line)
@@ -19,8 +31,8 @@ function M.parse_state(line)
 end
 
 function M.parse_priority(line)
-	local raw = line:match("%[%#(%u)%]")
-	return raw and "#" .. raw or nil
+	-- Return just the letter, not "#A"
+	return line:match("%[%#(%u)%]")
 end
 
 function M.parse_text(line)
@@ -50,30 +62,16 @@ function M.parse_text(line)
 end
 
 function M.extract_date(line)
-	-- Match date with optional day name and time: <YYYY-MM-DD>, <YYYY-MM-DD Tue>, <YYYY-MM-DD Tue 14:00>
+	-- Extract both tracked and untracked dates independently
+	-- (a line can have both, e.g., "TODO task <2025-06-22> [2025-06-23]")
 	local tracked = line:match("<(%d%d%d%d%-%d%d%-%d%d)")
 	local untracked = line:match("%[(%d%d%d%d%-%d%d%-%d%d)")
 	return tracked, untracked
 end
 
 function M.extract_times(line)
-	-- Match multi-day time range: <YYYY-MM-DD Day HH:MM>--<YYYY-MM-DD Day HH:MM>
-	local start_time = line:match("<[^>]*(%d%d:%d%d)>%-%-%<")
-	if start_time then
-		local end_time = line:match(">%-%-%<[^>]*(%d%d:%d%d)>")
-		return start_time, end_time
-	end
-
-	-- Match same-day time range: <YYYY-MM-DD Day HH:MM-HH:MM>
-	local end_time
-	start_time, end_time = line:match("<[^>]*(%d%d:%d%d)%-(%d%d:%d%d)")
-	if start_time then
-		return start_time, end_time
-	end
-
-	-- Match single time: <YYYY-MM-DD Day HH:MM>
-	start_time = line:match("<[^>]*(%d%d:%d%d)>")
-	return start_time, nil
+	-- Wrapper: delegate to datetime module
+	return datetime.extract_times(line)
 end
 
 function M.extract_tags(line)
@@ -92,17 +90,20 @@ end
 --- Expected format: `# STATE [#P] text :tag1:tag2:`
 ---
 --- @param line string The line to parse (e.g., "# TODO [#A] Finish task :urgent:")
---- @return table|nil state The task state ("TODO" or "IN_PROGRESS"), or nil if invalid
+--- @return table|nil Parsed headline data with priority as just letter (e.g., "A" not "#A")
 function M.parse_headline(line)
-	if not line:match("^#+%s") then
+	-- Quick check: is it a heading?
+	if not line:match(PATTERNS.heading_prefix) then
 		return nil
 	end
+
+	-- Extract all components
 	local tracked, untracked = M.extract_date(line)
 	local start_time, end_time = M.extract_times(line)
 
 	return {
 		state = M.parse_state(line),
-		priority = M.parse_priority(line),
+		priority = M.parse_priority(line), -- Now returns just letter, not "#A"
 		tracked = tracked,
 		untracked = untracked,
 		start_time = start_time,
@@ -135,6 +136,12 @@ function M.escape_marker(marker, escape_chars)
 	end
 
 	return table.concat(result)
+end
+
+-- Validate time string (HH:MM format)
+function M.validate_time(time_str)
+	-- Wrapper: delegate to datetime module
+	return datetime.validate_time(time_str)
 end
 
 return M

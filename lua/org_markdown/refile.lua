@@ -6,6 +6,41 @@ local async = require("org_markdown.utils.async")
 
 local M = {}
 
+--- Verify that refiled content was successfully written to destination
+--- @param filepath string Path to destination file
+--- @param expected_lines table Lines that should have been written
+--- @return boolean, string Success status and error message if failed
+local function verify_refile_write(filepath, expected_lines)
+	local expanded = vim.fn.expand(filepath)
+
+	-- Check file is readable
+	if vim.fn.filereadable(expanded) == 0 then
+		return false, "Destination file not readable after write"
+	end
+
+	local written = utils.read_lines(expanded)
+
+	-- Check last N lines match what we wrote
+	local verify_count = math.min(5, #expected_lines)
+	local start_idx = #written - verify_count + 1
+
+	-- Handle case where file has fewer lines than expected
+	if start_idx < 1 then
+		return false, string.format("Destination file has %d lines but expected at least %d", #written, #expected_lines)
+	end
+
+	for i = 1, verify_count do
+		local expected = expected_lines[i]
+		local actual = written[start_idx + i - 1]
+
+		if actual ~= expected then
+			return false, string.format("Content mismatch at line %d: expected '%s', got '%s'", i, expected, actual or "nil")
+		end
+	end
+
+	return true, nil
+end
+
 function M.get_refile_target()
 	local cursor = vim.api.nvim_win_get_cursor(0)
 	local row = cursor[1] - 1
@@ -76,9 +111,30 @@ function M.to_file()
 			}
 		end,
 		on_confirm = function(item)
+			-- TRANSACTION ORDER: write → verify → delete
+			-- This prevents data loss if write fails
+
+			-- 1. Write to destination FIRST
+			local write_ok, write_err = pcall(utils.append_lines, item.value, selection.lines)
+			if not write_ok then
+				vim.notify("Refile failed: " .. tostring(write_err), vim.log.levels.ERROR)
+				return -- Source untouched!
+			end
+
+			-- 2. Verify write succeeded
+			local verify_ok, verify_err = verify_refile_write(item.value, selection.lines)
+			if not verify_ok then
+				vim.notify("Refile verification failed: " .. verify_err, vim.log.levels.ERROR)
+				return -- Source still untouched
+			end
+
+			-- 3. Store in register for undo (before delete!)
+			vim.fn.setreg("r", table.concat(selection.lines, "\n"))
+
+			-- 4. NOW safe to delete from source
 			vim.api.nvim_buf_set_lines(0, selection.start_line, selection.end_line, false, {})
-			utils.append_lines(item.value, selection.lines)
-			vim.notify("Refiled to " .. item.value)
+
+			vim.notify("Refiled to " .. item.value .. ' (undo: press "rp in target file)')
 		end,
 	})
 end
