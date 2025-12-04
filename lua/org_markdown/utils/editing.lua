@@ -127,11 +127,11 @@ function M.setup_editing_keybinds(bufnr)
 	end, { desc = "org-markdown: cycle or enter", buffer = bufnr })
 
 	-- NORMAL: <Tab> cycles checkbox/status
-	vim.keymap.set("n", "<Tab>", function()
-		M.edit_line_at_cursor(function(line)
-			return M.cycle_checkbox_inline(line, config.checkbox_states) or M.cycle_status_inline(line, config.status_states)
-		end)
-	end, { desc = "org-markdown: cycle todo state", buffer = bufnr })
+	-- vim.keymap.set("n", "<Tab>", function()
+	-- 	M.edit_line_at_cursor(function(line)
+	-- 		return M.cycle_checkbox_inline(line, config.checkbox_states) or M.cycle_status_inline(line, config.status_states)
+	-- 	end)
+	-- end, { desc = "org-markdown: cycle todo state", buffer = bufnr })
 
 	-- INSERT: <CR> continues todos, else default <CR>
 	vim.keymap.set("i", "<CR>", function()

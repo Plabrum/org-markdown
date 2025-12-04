@@ -1,4 +1,3 @@
-local async = require("org_markdown.utils.async")
 local config = require("org_markdown.config")
 
 local M = {}
@@ -7,14 +6,16 @@ local function is_markdown(file)
 	return file:match("%.md$") or file:match("%.markdown$")
 end
 
---- Check if a filepath should be ignored based on ignore patterns
+--- Check if a filepath matches any of the given patterns
 --- Supports exact filename matches and simple glob patterns with wildcards
 --- @param filepath string Full path to check
---- @param ignore_patterns table Array of patterns to match against
---- @return boolean true if file should be ignored
-local function should_ignore(filepath, ignore_patterns)
-	if not ignore_patterns or #ignore_patterns == 0 then
-		return false
+--- @param patterns table Array of patterns to match against
+--- @param is_exclude_mode boolean If true, empty patterns means exclude none; if false, include all
+--- @return boolean true if file matches any pattern
+local function matches_patterns(filepath, patterns, is_exclude_mode)
+	if not patterns or #patterns == 0 then
+		-- Empty patterns: include mode returns true, exclude mode returns false
+		return not is_exclude_mode
 	end
 
 	-- Get just the filename for matching
@@ -22,9 +23,14 @@ local function should_ignore(filepath, ignore_patterns)
 	-- Get relative path from home for path-based patterns
 	local relative_path = vim.fn.fnamemodify(filepath, ":~:.")
 
-	for _, pattern in ipairs(ignore_patterns) do
+	for _, pattern in ipairs(patterns) do
 		-- Exact filename match
 		if filename == pattern then
+			return true
+		end
+
+		-- Substring match for simple patterns without wildcards
+		if not pattern:match("[*]") and filename:match(pattern) then
 			return true
 		end
 
@@ -68,11 +74,12 @@ local function scan_dir_sync(dir, collected)
 end
 
 --- Public sync markdown file finder
----@param opts? { use_cwd?: boolean, ignore_patterns?: table }
+---@param opts? { use_cwd?: boolean, include_patterns?: table, ignore_patterns?: table }
 ---@return string[] markdown_files
 function M.find_markdown_files(opts)
 	opts = opts or {}
 	local use_cwd = opts.use_cwd or false
+	local include_patterns = opts.include_patterns or {}
 	local ignore_patterns = opts.ignore_patterns or config.refile_heading_ignore or {}
 
 	local roots = {}
@@ -80,7 +87,8 @@ function M.find_markdown_files(opts)
 		table.insert(roots, vim.uv.cwd())
 	else
 		for _, path in ipairs(config.refile_paths or {}) do
-			table.insert(roots, vim.fn.expand(path))
+			local expanded = vim.fn.expand(path)
+			table.insert(roots, expanded)
 		end
 	end
 
@@ -89,10 +97,23 @@ function M.find_markdown_files(opts)
 		scan_dir_sync(root, all_files)
 	end
 
-	-- Filter out ignored files
+	-- Step 1: Apply include filter (if patterns provided)
+	local included_files = {}
+	if #include_patterns > 0 then
+		for _, filepath in ipairs(all_files) do
+			if matches_patterns(filepath, include_patterns, false) then
+				table.insert(included_files, filepath)
+			end
+		end
+	else
+		-- No include patterns means include all files
+		included_files = all_files
+	end
+
+	-- Step 2: Apply exclude filter
 	local filtered_files = {}
-	for _, filepath in ipairs(all_files) do
-		if not should_ignore(filepath, ignore_patterns) then
+	for _, filepath in ipairs(included_files) do
+		if not matches_patterns(filepath, ignore_patterns, true) then
 			table.insert(filtered_files, filepath)
 		end
 	end

@@ -50,11 +50,12 @@ local function find_view(view_id)
 end
 
 -- Helper function to cycle TODO state in a file
+-- Returns new_line, new_state if successful, nil otherwise
 local function cycle_todo_in_file(item)
 	local lines = utils.read_lines(item.file)
 	local line = lines[item.line]
 	if not line then
-		return false
+		return nil
 	end
 
 	-- Try to cycle the line
@@ -64,14 +65,17 @@ local function cycle_todo_in_file(item)
 	if new_lines and new_lines[1] then
 		lines[item.line] = new_lines[1]
 		utils.write_lines(item.file, lines)
-		return true
+
+		-- Parse the new line to get the new state
+		local new_heading = parser.parse_headline(new_lines[1])
+		return new_lines[1], new_heading and new_heading.state
 	end
 
-	return false
+	return nil
 end
 
 local function highlight_states(buf, lines)
-	local status_states = config.status_states or { "TODO", "IN_PROGRESS", "DONE" }
+	local status_states = config.status_states
 
 	for i, line in ipairs(lines) do
 		-- Find the position of each configured state word and highlight it
@@ -86,10 +90,14 @@ local function highlight_states(buf, lines)
 end
 
 -- Returns table of agenda items
-local function scan_files()
-	-- Agenda should scan ALL files, ignoring refile_heading_ignore patterns
-	local files = queries.find_markdown_files({ ignore_patterns = {} })
-	local agenda_items = { tasks = {}, calendar = {} }
+-- @param file_patterns table|nil Optional patterns to filter files (passed as include_patterns)
+local function scan_files(file_patterns)
+	-- Apply file patterns for early filtering
+	local files = queries.find_markdown_files({
+		include_patterns = file_patterns or {},
+		ignore_patterns = {}, -- Agenda scans all non-filtered files
+	})
+	local agenda_items = { tasks = {}, calendar = {}, all = {} }
 
 	for _, file in ipairs(files) do
 		local lines = utils.read_lines(file)
@@ -97,8 +105,9 @@ local function scan_files()
 
 		for i, line in ipairs(lines) do
 			local heading = parser.parse_headline(line)
-			if heading and heading.state then
-				table.insert(agenda_items.tasks, {
+			if heading then
+				-- Create item structure (used by all arrays)
+				local item = {
 					title = heading.text,
 					state = heading.state,
 					priority = heading.priority,
@@ -110,22 +119,20 @@ local function scan_files()
 					file = file,
 					tags = heading.tags,
 					source = display_name,
-				})
-			end
-			if heading and heading.tracked then
-				table.insert(agenda_items.calendar, {
-					title = heading.text,
-					state = heading.state,
-					priority = heading.priority,
-					date = heading.tracked,
-					start_time = heading.start_time,
-					end_time = heading.end_time,
-					all_day = heading.all_day,
-					line = i,
-					file = file,
-					tags = heading.tags,
-					source = display_name,
-				})
+				}
+
+				-- Add to 'all' array for every heading
+				table.insert(agenda_items.all, item)
+
+				-- Add to 'tasks' array if it has a state
+				if heading.state then
+					table.insert(agenda_items.tasks, item)
+				end
+
+				-- Add to 'calendar' array if it has a tracked date
+				if heading.tracked then
+					table.insert(agenda_items.calendar, item)
+				end
 			end
 		end
 	end
@@ -152,20 +159,24 @@ local function filter_item(item, filters)
 		return true
 	end
 
-	-- State filter
+	-- State filter: only filter items that have a state
+	-- Items without states (plain headings) pass through
 	if filters.states and #filters.states > 0 then
-		if not item.state or not vim.tbl_contains(filters.states, item.state) then
+		if item.state and not vim.tbl_contains(filters.states, item.state) then
 			return false
 		end
 	end
 
-	-- Priority filter
+	-- Priority filter: only filter items that have a priority
+	-- Items without priorities (plain headings) pass through
 	if filters.priorities and #filters.priorities > 0 then
-		local priority_letter = item.priority
-		if not priority_letter or not vim.tbl_contains(filters.priorities, priority_letter) then
+		if item.priority and not vim.tbl_contains(filters.priorities, item.priority) then
 			return false
 		end
 	end
+
+	-- File filtering is now done at the query stage via file_patterns
+	-- (removed late file filtering for performance)
 
 	-- Tag filter (any match)
 	if filters.tags and #filters.tags > 0 then
@@ -344,7 +355,7 @@ local formatters = {
 		end,
 
 		grouped = function(item)
-			return agenda_formatters.format_blocks(item, "    ")
+			return agenda_formatters.format_blocks(item, "  ")
 		end,
 
 		group_header = function(group_key, group_by)
@@ -362,7 +373,7 @@ local formatters = {
 		end,
 
 		grouped = function(item)
-			return agenda_formatters.format_timeline(item, "    ")
+			return agenda_formatters.format_timeline(item, "  ")
 		end,
 
 		group_header = function(group_key, group_by)
@@ -424,24 +435,7 @@ local function get_source_items(all_data, source)
 	elseif source == "calendar" then
 		return all_data.calendar
 	elseif source == "all" then
-		-- Combine both, removing duplicates
-		local combined = {}
-		local seen = {}
-		for _, item in ipairs(all_data.tasks) do
-			local key = item.file .. ":" .. item.line
-			if not seen[key] then
-				table.insert(combined, item)
-				seen[key] = true
-			end
-		end
-		for _, item in ipairs(all_data.calendar) do
-			local key = item.file .. ":" .. item.line
-			if not seen[key] then
-				table.insert(combined, item)
-				seen[key] = true
-			end
-		end
-		return combined
+		return all_data.all
 	else
 		return all_data.tasks -- Default fallback
 	end
@@ -449,8 +443,9 @@ end
 
 -- Process a view through the filter → sort → group → render pipeline
 local function process_view(view_id, view_def)
-	-- 1. Get source data
-	local all_data = scan_files()
+	-- 1. Get source data with early file filtering
+	local file_patterns = view_def.filters and view_def.filters.file_patterns or nil
+	local all_data = scan_files(file_patterns)
 	local items = get_source_items(all_data, view_def.source or "tasks")
 
 	-- 2. Filter → Sort → Group
@@ -507,19 +502,40 @@ function M.show_view(view_id)
 		local cursor = vim.api.nvim_win_get_cursor(win)
 		local line_num = cursor[1]
 		local item = line_to_item[line_num]
-		if item and cycle_todo_in_file(item) then
-			-- Refresh the view
-			local new_lines, new_line_to_item = process_view(view_id, view_def)
-			vim.bo[buf].modifiable = true
-			vim.api.nvim_buf_set_lines(buf, 0, -1, false, new_lines)
-			vim.bo[buf].modifiable = false
-			highlight_states(buf, new_lines)
-			line_to_item = new_line_to_item
-			-- Restore cursor position
-			if vim.api.nvim_win_is_valid(win) then
-				vim.api.nvim_win_set_cursor(win, cursor)
+		if not item then
+			return
+		end
+
+		local new_line, new_state = cycle_todo_in_file(item)
+		if not new_line then
+			return
+		end
+
+		-- Update the item with new state
+		item.state = new_state
+
+		-- Update just this line with the new state
+		local format_name = (view_def.display and view_def.display.format) or "timeline"
+		local fmt = formatters[format_name] or formatters.timeline
+		local formatter_fn = view_def.group_by and fmt.grouped or fmt.flat
+		local new_display_line = formatter_fn(item)
+
+		-- Handle multi-line formatters (just take first line for now)
+		local first_line = new_display_line:match("[^\n]+") or new_display_line
+
+		vim.bo[buf].modifiable = true
+		vim.api.nvim_buf_set_lines(buf, line_num - 1, line_num, false, { first_line })
+
+		-- Re-highlight just this line
+		local status_states = config.status_states
+		for _, state in ipairs(status_states) do
+			local state_start, state_end = first_line:find(state)
+			if state_start then
+				local hl_group_name = "OrgStatus_" .. state
+				vim.api.nvim_buf_add_highlight(buf, -1, hl_group_name, line_num - 1, state_start - 1, state_end)
 			end
 		end
+		vim.bo[buf].modifiable = false
 	end, { buffer = buf, silent = true })
 end
 
@@ -556,12 +572,8 @@ function M.show_tabbed_agenda()
 	local fill_width = vim.o.columns > 120 and 0.7 or 0.9
 	local fill_height = 0.5
 
-	-- Get first view title for initial window title
-	local first_view = config.agendas.views[1]
-	local initial_title = "Agenda - " .. (first_view.title or first_view.id)
-
 	local buf, win = utils.open_window({
-		title = initial_title,
+		title = "Agenda",
 		method = config.agendas.window_method,
 		filetype = "markdown",
 		footer = "Loading...",
@@ -624,21 +636,56 @@ function M.show_tabbed_agenda()
 		local cursor = vim.api.nvim_win_get_cursor(win)
 		local line_num = cursor[1]
 		local item = vim.b[buf].agenda_line_to_item[line_num]
-		if item and cycle_todo_in_file(item) then
-			-- Refresh the current tab
-			local current_tab = vim.b[buf].agenda_current_tab or 1
-			local current_view_id = config.agendas.views[current_tab].id
-			refresh_tab_content(buf, win, current_tab, current_view_id)
-			-- Restore cursor position
-			if vim.api.nvim_win_is_valid(win) then
-				vim.api.nvim_win_set_cursor(win, cursor)
+		if not item then
+			return
+		end
+
+		local new_line, new_state = cycle_todo_in_file(item)
+		if not new_line then
+			return
+		end
+
+		-- Update the item with new state
+		item.state = new_state
+
+		-- Get current view for formatting
+		local current_tab = vim.b[buf].agenda_current_tab or 1
+		local current_view = config.agendas.views[current_tab]
+
+		-- Update just this line with the new state
+		local format_name = (current_view.display and current_view.display.format) or "timeline"
+		local fmt = formatters[format_name] or formatters.timeline
+		local formatter_fn = current_view.group_by and fmt.grouped or fmt.flat
+		local new_display_line = formatter_fn(item)
+
+		-- Handle multi-line formatters (just take first line for now)
+		local first_line = new_display_line:match("[^\n]+") or new_display_line
+
+		vim.bo[buf].modifiable = true
+		vim.api.nvim_buf_set_lines(buf, line_num - 1, line_num, false, { first_line })
+
+		-- Re-highlight just this line
+		local status_states = config.status_states
+		for _, state in ipairs(status_states) do
+			local state_start, state_end = first_line:find(state)
+			if state_start then
+				local hl_group_name = "OrgStatus_" .. state
+				vim.api.nvim_buf_add_highlight(buf, -1, hl_group_name, line_num - 1, state_start - 1, state_end)
 			end
 		end
+		vim.bo[buf].modifiable = false
 	end, { buffer = buf, silent = true })
 
-	-- Get first view from config (preserves order)
-	local first_view_id = config.agendas.views[1].id
-	refresh_tab_content(buf, win, 1, first_view_id)
+	-- Load content for the current tab (after setup has restored the saved tab)
+	local current_tab = vim.b[buf].agenda_current_tab or 1
+	local current_view_id = config.agendas.views[current_tab].id
+	local current_view_def = find_view(current_view_id)
+	refresh_tab_content(buf, win, current_tab, current_view_id)
+
+	-- Update title to match the restored tab
+	if current_view_def then
+		utils.set_window_title(win, "Agenda - " .. (current_view_def.title or current_view_id))
+	end
 end
 
 return M

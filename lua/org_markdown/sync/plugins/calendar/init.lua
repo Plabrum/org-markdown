@@ -7,7 +7,7 @@ local M = {
 
 	default_config = {
 		enabled = true,
-		sync_file = "~/notes/calendar.md",
+		sync_file = "~/org/calendar.md",
 		days_ahead = 30,
 		days_behind = 0,
 		calendars = {}, -- {} = all calendars

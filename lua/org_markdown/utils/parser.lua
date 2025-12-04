@@ -2,10 +2,9 @@ local M = {}
 local datetime = require("org_markdown.utils.datetime")
 
 -- Build valid states from config dynamically
--- Fallback to default states if config not yet loaded
 local function get_valid_states()
 	local config = require("org_markdown.config")
-	local states = config.status_states or { "TODO", "IN_PROGRESS", "DONE" }
+	local states = config.status_states
 	local valid = {}
 	for _, state in ipairs(states) do
 		valid[state] = true
@@ -111,7 +110,7 @@ function M.parse_headline(line)
 		untracked = untracked,
 		start_time = start_time,
 		end_time = end_time,
-		all_day = start_time == nil,
+		all_day = tracked ~= nil and start_time == nil, -- Only all-day if has date but no time
 		text = M.parse_text(line),
 		tags = M.extract_tags(line),
 	}

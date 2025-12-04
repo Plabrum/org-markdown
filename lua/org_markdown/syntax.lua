@@ -39,7 +39,7 @@ local function highlight_status_keywords(bufnr)
 
 	-- Build status patterns dynamically from config
 	local config = require("org_markdown.config")
-	local status_states = config.status_states or { "TODO", "IN_PROGRESS", "DONE" }
+	local status_states = config.status_states
 
 	local patterns = {}
 	for _, state in ipairs(status_states) do

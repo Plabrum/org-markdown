@@ -26,10 +26,10 @@ local M = {
 		-- %<fmt> - Custom date format (e.g., %<%Y-%m-%d %H:%M:%S>)
 
 		templates = {
-			["todo"] = {
+			["Task"] = {
 				template = "# TODO %? \n %u",
-				filename = "~/notes/todo.md",
-				heading = "TODO's",
+				filename = "~/org/refile.md",
+				heading = "",
 			},
 		},
 	},
@@ -64,14 +64,29 @@ local M = {
 				group_by = "date",
 				display = { format = "timeline" },
 			},
+			{
+				id = "inbox",
+				title = "Refile Inbox",
+				source = "all",
+				filters = {
+					file_patterns = { "refile" }, -- Flexible pattern matching
+					states = { "TODO", "IN_PROGRESS" },
+				},
+				sort = {
+					by = "date",
+					order = "asc",
+				},
+				group_by = "file",
+				display = { format = "timeline" },
+			},
 		},
 	},
 	window_method = "vertical",
 	picker = "snacks", -- or "telescope"
 	-- picker = "telescope",
-	refile_paths = { "~/notes" },
+	refile_paths = { "~/org" },
 	refile_heading_ignore = { "calendar", "archive/*" }, -- List of patterns to exclude from refile heading operations (e.g., "calendar.md", "archive/*")
-	quick_note_file = "~/notes/quick_notes/",
+	quick_note_file = "~/org/quick_notes/",
 	sync = {
 		enabled = true,
 		plugins = {
@@ -180,6 +195,14 @@ local function validate_view(view_id, view_def)
 		end
 	end
 
+	-- Check for deprecated filters.files field
+	if view_def.filters and view_def.filters.files then
+		table.insert(
+			warnings,
+			"filters.files is deprecated. Use filters.file_patterns instead for flexible pattern matching."
+		)
+	end
+
 	if #warnings > 0 then
 		vim.notify(string.format("View '%s' warnings:\n%s", view_id, table.concat(warnings, "\n")), vim.log.levels.WARN)
 	end
@@ -252,11 +275,24 @@ setmetatable(M, {
 		if k == "_defaults" or k == "_runtime" or k == "setup" then
 			return rawget(t, k)
 		end
-		-- Fall back to runtime, then defaults
+		-- Priority: runtime > directly set values > defaults
 		if t._runtime and t._runtime[k] ~= nil then
 			return t._runtime[k]
 		end
+		local direct_value = rawget(t, k)
+		if direct_value ~= nil then
+			return direct_value
+		end
 		return t._defaults[k]
+	end,
+	__newindex = function(t, k, v)
+		-- Direct assignment updates runtime config (if it exists)
+		if t._runtime then
+			t._runtime[k] = v
+		else
+			-- Before setup, write to the table directly
+			rawset(t, k, v)
+		end
 	end,
 })
 

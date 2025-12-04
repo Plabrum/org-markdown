@@ -43,19 +43,20 @@ T["config validation - default views exist"] = function()
 
 	-- Check default views are present in array
 	local tasks = find_view("tasks")
-	local calendar_compact = find_view("calendar_compact")
+	local calendar = find_view("calendar")
 
 	MiniTest.expect.no_equality(tasks, nil)
-	MiniTest.expect.no_equality(calendar_compact, nil)
+	MiniTest.expect.no_equality(calendar, nil)
 	MiniTest.expect.equality(tasks.source, "tasks")
-	MiniTest.expect.equality(calendar_compact.source, "calendar")
+	MiniTest.expect.equality(calendar.source, "calendar")
 end
 
 T["config validation - views array defaults"] = function()
 	config.setup({})
 
 	MiniTest.expect.equality(config.agendas.views[1].id, "tasks")
-	MiniTest.expect.equality(config.agendas.views[2].id, "calendar_compact")
+	MiniTest.expect.equality(config.agendas.views[2].id, "calendar")
+	MiniTest.expect.equality(config.agendas.views[3].id, "inbox")
 	-- Verify it's an array (has numeric indices)
 	MiniTest.expect.equality(vim.tbl_islist(config.agendas.views), true)
 end

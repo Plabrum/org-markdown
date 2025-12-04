@@ -97,7 +97,7 @@ local EVENT_SCHEMA = {
 				return true
 			end
 			local config = require("org_markdown.config")
-			local valid_states = config.status_states or { "TODO", "IN_PROGRESS", "DONE" }
+			local valid_states = config.status_states
 			return vim.tbl_contains(valid_states, v)
 		end,
 		error_msg = "status must be valid state from config.status_states",

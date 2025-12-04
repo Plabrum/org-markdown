@@ -143,6 +143,7 @@ Views are defined as an array in `config.agendas.views`. Each view has the follo
   title = "View Title",            -- Displayed at top of buffer
   source = "tasks",                -- "tasks", "calendar", or "all"
   filters = {                      -- Optional: filter items
+    file_patterns = { "work/*", "refile" },  -- Flexible pattern matching (applied at query stage)
     states = { "TODO", "IN_PROGRESS" },
     priorities = { "A", "B" },
     tags = { "work", "urgent" },
@@ -159,6 +160,43 @@ Views are defined as an array in `config.agendas.views`. Each view has the follo
   }
 }
 ```
+
+#### View Source Types
+
+The `source` field determines which headings to include in the view:
+
+**`source = "tasks"`** - Shows headings with TODO states
+- Includes: `## TODO Buy groceries`, `## IN_PROGRESS Write docs`
+- Excludes: Plain headings without states
+
+**`source = "calendar"`** - Shows headings with tracked dates (`<YYYY-MM-DD>`)
+- Includes: `## Meeting <2025-12-05>`, `## TODO Review PR <2025-12-06>`
+- Excludes: Headings without tracked dates (untracked dates `[YYYY-MM-DD]` are not shown)
+
+**`source = "all"`** - Shows ALL headings regardless of state or date
+- Includes: Every heading in the scanned files
+- Use with `file_patterns` to scope to specific files
+- Example: View all headings in inbox file
+
+**Notes:**
+- Headings can appear in multiple sources (e.g., `## TODO Meeting <2025-12-05>` is in both `tasks` and `calendar`)
+- The `source` determines initial inclusion; filters (states, dates, tags, etc.) can further refine the results
+- Use `source = "all"` when you want to see everything, then filter as needed
+
+#### File Pattern Matching
+
+The `file_patterns` filter provides flexible file matching at the query stage (before reading/parsing files) for optimal performance:
+
+**Pattern Types:**
+- **Exact filename**: `"refile.md"` - matches files named exactly "refile.md"
+- **Substring match**: `"refile"` - matches any file containing "refile" (e.g., "refile.md", "my-refile.md")
+- **Wildcard**: `"*.todo.md"` - matches files ending with ".todo.md"
+- **Directory**: `"work/*"` - matches all files in the work directory
+- **Nested paths**: `"archive/*"` - matches files in paths containing "archive/"
+
+**Performance Note:** File filtering happens at the query stage, so only matching files are read and parsed. This is much faster than the deprecated `filters.files` which filtered after parsing all files.
+
+**Migration:** The old `filters.files` field (exact filename matching only) is deprecated. Use `filters.file_patterns` for flexible pattern support.
 
 #### Example Custom Views
 ```lua
