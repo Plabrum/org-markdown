@@ -66,9 +66,9 @@ T["capture_template_find - finds byte position of unescaped marker"] = function(
 	MiniTest.expect.equality(col, 9)
 end
 
--- ============================================================================
+-- =========================================================================
 -- Bug 0.3 Tests: Template Marker Fixes
--- ============================================================================
+-- =========================================================================
 
 T["template markers - %t and %H basic expansion"] = function()
 	local capture = require("org_markdown.capture")

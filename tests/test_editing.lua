@@ -45,4 +45,25 @@ T["Only the first checkbox is cycled"] = function()
 	MiniTest.expect.equality(result[1], "- [-] First [ ] Second")
 end
 
+-- Status cycling tests
+local default_status_states = { "TODO", "IN_PROGRESS", "DONE" }
+
+T["TODO becomes IN_PROGRESS"] = function()
+	local line = "## TODO Write tests"
+	local result = editing.cycle_status_inline(line, default_status_states)
+	MiniTest.expect.equality(result[1], "## IN_PROGRESS Write tests")
+end
+
+T["Status cycling preserves priority"] = function()
+	local line = "## TODO [#C] Make kanban view for list endpoint :feature:"
+	local result = editing.cycle_status_inline(line, default_status_states)
+	MiniTest.expect.equality(result[1], "## IN_PROGRESS [#C] Make kanban view for list endpoint :feature:")
+end
+
+T["Status cycling with high priority"] = function()
+	local line = "## TODO [#A] Critical bug"
+	local result = editing.cycle_status_inline(line, default_status_states)
+	MiniTest.expect.equality(result[1], "## IN_PROGRESS [#A] Critical bug")
+end
+
 return T

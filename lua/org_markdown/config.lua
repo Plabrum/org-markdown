@@ -36,8 +36,8 @@ local M = {
 	agendas = {
 		window_method = "float",
 		views = {
-			{
-				id = "tasks",
+			tasks = {
+				order = 1,
 				title = "Tasks",
 				source = "tasks",
 				filters = {
@@ -50,8 +50,8 @@ local M = {
 				group_by = "file",
 				display = { format = "timeline" },
 			},
-			{
-				id = "calendar",
+			calendar = {
+				order = 2,
 				title = "Calendar (10-Day Timeline)",
 				source = "calendar",
 				filters = {
@@ -64,8 +64,8 @@ local M = {
 				group_by = "date",
 				display = { format = "timeline" },
 			},
-			{
-				id = "inbox",
+			inbox = {
+				order = 3,
 				title = "Refile Inbox",
 				source = "all",
 				filters = {
@@ -243,6 +243,33 @@ local function register_neoconf()
 	end
 end
 
+-- Helper to get views as an ordered array (for iteration/tabs)
+-- Returns array of { id = "view_id", ...view_def }
+function M.get_ordered_views()
+	if not M._runtime or not M._runtime.agendas or not M._runtime.agendas.views then
+		return {}
+	end
+
+	local views = {}
+	for view_id, view_def in pairs(M._runtime.agendas.views) do
+		local view = vim.deepcopy(view_def)
+		view.id = view_id
+		table.insert(views, view)
+	end
+
+	-- Sort by order field (default to 999 if not specified, then alphabetically)
+	table.sort(views, function(a, b)
+		local order_a = a.order or 999
+		local order_b = b.order or 999
+		if order_a == order_b then
+			return a.id < b.id
+		end
+		return order_a < order_b
+	end)
+
+	return views
+end
+
 function M.setup(user_config)
 	-- Register schema for autocomplete
 	register_neoconf()
@@ -260,8 +287,8 @@ function M.setup(user_config)
 
 	-- Validate views after merging
 	if M._runtime.agendas and M._runtime.agendas.views then
-		for _, view_def in ipairs(M._runtime.agendas.views) do
-			validate_view(view_def.id, view_def)
+		for view_id, view_def in pairs(M._runtime.agendas.views) do
+			validate_view(view_id, view_def)
 		end
 	end
 

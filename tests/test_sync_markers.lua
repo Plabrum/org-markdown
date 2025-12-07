@@ -18,15 +18,15 @@ local function cleanup_test_files()
 	vim.fn.delete("/tmp/org-markdown-test", "rf")
 end
 
--- ============================================================================
+-- =========================================================================
 -- NOTE: Since marker validation functions are local to manager.lua,
 -- these tests focus on integration testing through the public sync API.
 -- We test the observable behavior rather than internal functions.
--- ============================================================================
+-- =========================================================================
 
--- ============================================================================
+-- =========================================================================
 -- File Preservation Tests
--- ============================================================================
+-- =========================================================================
 
 T["marker validation - file with no markers can be synced"] = function()
 	local lines = {
@@ -226,9 +226,9 @@ T["utils - write_lines works correctly"] = function()
 	cleanup_test_files()
 end
 
--- ============================================================================
+-- =========================================================================
 -- Integration Tests - These would require a full sync setup
--- ============================================================================
+-- =========================================================================
 
 T["integration - sync with missing END marker should abort"] = function()
 	-- This is a placeholder for an integration test

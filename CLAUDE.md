@@ -42,8 +42,10 @@ The plugin follows a modular architecture with clear separation of concerns:
 - Scans markdown files for TODO/IN_PROGRESS headings and scheduled dates
 - Parses tasks using `parser.parse_headline()` which extracts state, priority, dates, and tags
 - Fully configurable view system with filter → sort → group → render pipeline
-- Views are defined as an array in `config.agendas.views` with default "tasks", "calendar_blocks", and "calendar_compact" views
-- All views are automatically available for tabbed navigation using `[` and `]` keys, in the order defined
+- Views are defined as an object in `config.agendas.views`, keyed by view ID (e.g., `tasks`, `calendar`, `inbox`)
+- Custom views merge additively with defaults (like capture templates)
+- Tab order controlled by `order` field in each view definition
+- All views are automatically available for tabbed navigation using `[` and `]` keys
 - Built-in formatters: "blocks", "timeline"
 - Date formats: `<YYYY-MM-DD>` for tracked/scheduled items, `[YYYY-MM-DD]` for non-agenda timestamps
 
@@ -136,27 +138,31 @@ User prompts and capture buffers use the custom async system. Wrap async functio
 The agenda system uses a configurable view architecture that processes items through a filter → sort → group → render pipeline.
 
 #### View Configuration Structure
-Views are defined as an array in `config.agendas.views`. Each view has the following structure:
+Views are defined as an object in `config.agendas.views`, keyed by view ID. Custom views merge additively with defaults (similar to capture templates). Each view has the following structure:
 ```lua
-{
-  id = "view_id",                  -- Required: Unique identifier for this view
-  title = "View Title",            -- Displayed at top of buffer
-  source = "tasks",                -- "tasks", "calendar", or "all"
-  filters = {                      -- Optional: filter items
-    file_patterns = { "work/*", "refile" },  -- Flexible pattern matching (applied at query stage)
-    states = { "TODO", "IN_PROGRESS" },
-    priorities = { "A", "B" },
-    tags = { "work", "urgent" },
-    date_range = { days = 7, offset = 0 }  -- or { from = "2025-01-01", to = "2025-12-31" }
-  },
-  sort = {                         -- Optional: sort items
-    by = "priority",               -- "priority", "date", "state", "title", "file"
-    order = "asc",                 -- "asc" or "desc"
-    priority_rank = { A = 1, B = 2, C = 3, Z = 99 }  -- Custom priority ranking
-  },
-  group_by = "date",               -- Optional: "date", "priority", "state", "file", "tags"
-  display = {                      -- Optional: formatting
-    format = "blocks"              -- "blocks" or "timeline"
+agendas = {
+  views = {
+    view_id = {                    -- Key is the view ID (e.g., "tasks", "urgent", "work")
+      order = 1,                   -- Optional: Controls tab order (lower = earlier), defaults to 999
+      title = "View Title",        -- Displayed at top of buffer
+      source = "tasks",            -- "tasks", "calendar", or "all"
+      filters = {                  -- Optional: filter items
+        file_patterns = { "work/*", "refile" },  -- Flexible pattern matching (applied at query stage)
+        states = { "TODO", "IN_PROGRESS" },
+        priorities = { "A", "B" },
+        tags = { "work", "urgent" },
+        date_range = { days = 7, offset = 0 }  -- or { from = "2025-01-01", to = "2025-12-31" }
+      },
+      sort = {                     -- Optional: sort items
+        by = "priority",           -- "priority", "date", "state", "title", "file"
+        order = "asc",             -- "asc" or "desc"
+        priority_rank = { A = 1, B = 2, C = 3, Z = 99 }  -- Custom priority ranking
+      },
+      group_by = "date",           -- Optional: "date", "priority", "state", "file", "tags"
+      display = {                  -- Optional: formatting
+        format = "blocks"          -- "blocks" or "timeline"
+      }
+    }
   }
 }
 ```
@@ -200,10 +206,10 @@ The `file_patterns` filter provides flexible file matching at the query stage (b
 
 #### Example Custom Views
 ```lua
--- Define custom views as an array (order matters - defines tab order)
+-- Define custom views as an object (merges additively with defaults)
 config.agendas.views = {
-  {
-    id = "urgent",
+  urgent = {
+    order = 1,  -- Tab order (appears first)
     title = "Urgent Work Items",
     source = "tasks",
     filters = {
@@ -214,8 +220,8 @@ config.agendas.views = {
     sort = { by = "date", order = "asc" },
     display = { format = "timeline" }
   },
-  {
-    id = "week",
+  week = {
+    order = 2,
     title = "This Week",
     source = "calendar",
     filters = {
@@ -225,32 +231,44 @@ config.agendas.views = {
     group_by = "date",
     display = { format = "blocks" }
   },
-  {
-    id = "by_file",
+  by_file = {
+    order = 10,  -- Appears after defaults (which have order 1, 2, 3)
     title = "Tasks by File",
     source = "all",
     sort = { by = "file", order = "asc" },
     group_by = "file",
     display = { format = "timeline" }
+  },
+  -- You can also override default views by using their key
+  tasks = {
+    order = 1,
+    title = "My Custom Tasks View",  -- Override default tasks view
+    source = "tasks",
+    filters = { states = { "TODO" } }  -- Only TODO, not IN_PROGRESS
   }
 }
 ```
 
-**Note**: Views are defined as an array. When you provide custom views in your config, they **replace** the default views entirely. The order you define them determines the tab order when cycling with `[` and `]` keys.
+**Note**: Views are defined as an object keyed by view ID. Custom views **merge** with default views (additive, like capture templates). Use the `order` field to control tab order when cycling with `[` and `]` keys. To override a default view, use its key (`tasks`, `calendar`, or `inbox`) and provide your custom definition.
 
 ### Sync Plugin Development
+
+The sync plugin system supports importing different types of data sources (calendars, task trackers, etc.) into markdown files. Each plugin manages its own sync file, which is **AUTO-MANAGED** (completely replaced on each sync).
+
 When creating a sync plugin:
-1. **Implement standard interface**: Return a table with `name`, `sync()`, `default_config`
-2. **Return standard event format**: Manager handles markdown formatting
+1. **Implement standard interface**: Return a table with `name`, `sync_file`, `sync()`, `default_config`
+2. **Return standard item format**: Manager handles markdown formatting
 3. **Handle errors gracefully**: Return `nil, error_message` on failure
 4. **Use plugin config**: Access via `config.sync.plugins[plugin_name]`
 5. **Register in init.lua**: Add to `plugin_names` array or use `external_plugins` config
-6. **Example**: See `sync/plugins/calendar/` for reference implementation
+6. **Examples**: See `sync/plugins/calendar/` and `sync/plugins/linear.lua`
 
-Sync plugin interface:
+#### Sync Plugin Interface
+
 ```lua
 {
   name = "plugin_name",                    -- Required: Plugin identifier
+  sync_file = "~/org/plugin.md",           -- Required: File to sync to (AUTO-MANAGED)
   description = "Human-readable name",     -- Optional: For UI/notifications
   default_config = { ... },                -- Optional: Merged into config.sync.plugins.plugin_name
   setup = function(config) ... end,        -- Optional: Validation/initialization (return false to disable)
@@ -261,28 +279,92 @@ Sync plugin interface:
 }
 ```
 
-Event data structure (returned by plugin sync()):
+#### Item Data Structure
+
+Items can represent calendar events, tasks, issues, or simple notes. All date/status fields are optional - items with no dates/status are valid "notes".
+
+**Manager handles org-markdown fields only:**
+- Headings (title, status, priority)
+- Dates (for agenda filtering/display)
+- Tags (for filtering/organization)
+- Body (markdown content)
+
+**Plugins format their own domain-specific metadata** (assignee, project, location, URLs, IDs) into the `body` field.
+
 ```lua
 {
-  events = {
+  items = {  -- Can also use "events" for backward compatibility
     {
-      title = "Event Title",
-      start_date = { year = 2025, month = 11, day = 28 },
-      end_date = { ... },          -- Optional for multi-day events
-      start_time = "14:00",         -- Optional for timed events (24-hour)
+      -- Required
+      title = "Item Title",
+
+      -- Dates (optional - for agenda filtering/display)
+      start_date = { year = 2025, month = 11, day = 28 },  -- Optional
+      due_date = { year = 2025, month = 12, day = 1 },      -- Optional (for tasks)
+      end_date = { ... },                                    -- Optional
+
+      -- Times (optional - for calendar events)
+      start_time = "14:00",         -- Optional (24-hour)
       end_time = "15:00",           -- Optional
-      all_day = false,              -- Boolean
-      tags = { "tag1", "tag2" },    -- Array of strings
-      body = "Description...",      -- Optional event body
+      all_day = false,              -- Optional
+
+      -- Org-markdown fields (optional - for filtering/organization)
+      status = "TODO",              -- Optional (TODO, IN_PROGRESS, DONE, CANCELLED)
+      priority = "A",               -- Optional (A, B, C)
+      tags = { "tag1", "tag2" },    -- Optional
+
+      -- Content (plugin formats its own metadata here)
+      body = "**Assignee:** Alice\n**Project:** Acme\n\nDescription text...",  -- Optional
+      description = "...",          -- Optional (fallback if no body)
     }
   },
   stats = {
     count = 5,
     date_range = "2025-11-28 to 2025-12-28",  -- Optional
-    source = "GitHub",                        -- Optional
+    source = "Linear",                        -- Optional
+    calendars = { "Work", "Personal" },       -- Optional
   }
 }
 ```
+
+#### Built-in Plugins
+
+**Calendar Plugin** (`sync/plugins/calendar/`)
+- **Bidirectional sync** with macOS Calendar.app
+- **Pull** (Calendar.app → `~/org/calendar.md`): Auto-managed file with events from Calendar.app
+- **Push** (markdown → Calendar.app): Any markdown item with tracked date (`<YYYY-MM-DD>`) syncs to "org-markdown" calendar
+- Config: `config.sync.plugins.calendar`
+- Org-markdown fields: `start_date`, `end_date`, `all_day`, `start_time`, `end_time`, `tags`
+- UID tracking: Items store Calendar.app UID in body as `**Calendar ID:** \`<uid>\`` for updates
+- Formats into body: location, URL, calendar ID, notes
+
+**Bidirectional Sync Architecture:**
+- **Pull (existing)**: Calendar.app → calendar.md (one-way, auto-managed)
+- **Push (new)**: User files (refile.md, etc.) → Calendar.app "org-markdown" calendar
+- **Async execution**: Push runs asynchronously using custom async/promise system (doesn't block UI)
+- Sync loop prevention: Pull excludes "org-markdown" calendar by default
+- UID lifecycle: Create (no UID) → returns UID → Update (with UID) → modify event
+- Conflict resolution: Markdown wins (push overwrites Calendar.app changes)
+- Auto-sync: Disabled by default (enable after creating "org-markdown" calendar)
+
+**Linear Plugin** (`sync/plugins/linear.lua`)
+- Syncs assigned issues and cycles from Linear
+- File: `~/org/linear.md`
+- Config: `config.sync.plugins.linear`
+- Requires: API key from https://linear.app/settings/api
+- Org-markdown fields: `status`, `priority`, `due_date`, `tags`
+- Formats into body: assignee, project, state, URL, issue ID
+- State mapping:
+  - `backlog`, `todo` → `TODO`
+  - `in_progress`, `started` → `IN_PROGRESS`
+  - `done`, `completed` → `DONE`
+  - `canceled` → `CANCELLED`
+
+#### Important Notes
+
+- **AUTO-MANAGED FILES**: Sync files are completely replaced on each sync. Do not manually edit them.
+- **Agenda Integration**: Items with `status` appear in task-based agenda views. Items with tracked dates (`<YYYY-MM-DD>`) appear in calendar-based views.
+- **File Format**: All items are formatted as markdown headings with optional dates, tags, and metadata.
 
 ## File Type Support
 

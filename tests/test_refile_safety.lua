@@ -26,9 +26,9 @@ local function create_test_buffer(lines)
 	return bufnr
 end
 
--- ============================================================================
+-- =========================================================================
 -- Refile Target Detection Tests
--- ============================================================================
+-- =========================================================================
 
 T["get_refile_target - detects bullet point"] = function()
 	local lines = {
@@ -119,9 +119,9 @@ T["get_refile_target - detects TODO heading on first line"] = function()
 	vim.api.nvim_buf_delete(bufnr, { force = true })
 end
 
--- ============================================================================
+-- =========================================================================
 -- Transaction Safety Tests
--- ============================================================================
+-- =========================================================================
 
 T["refile safety - destination write is verified"] = function()
 	-- This test verifies that the verification function works
@@ -176,9 +176,9 @@ T["refile safety - append_lines handles errors gracefully"] = function()
 	MiniTest.expect.no_equality(err, nil)
 end
 
--- ============================================================================
+-- =========================================================================
 -- Content Preservation Tests
--- ============================================================================
+-- =========================================================================
 
 T["refile content - gets heading content"] = function()
 	-- Test that content is captured
@@ -243,9 +243,9 @@ T["refile content - handles checked bullets"] = function()
 	vim.api.nvim_buf_delete(bufnr, { force = true })
 end
 
--- ============================================================================
+-- =========================================================================
 -- Edge Cases
--- ============================================================================
+-- =========================================================================
 
 T["refile edge case - heading at end of file"] = function()
 	local lines = {
@@ -307,9 +307,9 @@ T["refile edge case - indented bullet"] = function()
 	vim.api.nvim_buf_delete(bufnr, { force = true })
 end
 
--- ============================================================================
+-- =========================================================================
 -- Integration Scenarios
--- ============================================================================
+-- =========================================================================
 
 T["integration - write and verify cycle"] = function()
 	-- Simulate the write → verify → delete cycle

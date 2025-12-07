@@ -9,8 +9,7 @@ T["config validation - valid view config"] = function()
 	local test_config = {
 		agendas = {
 			views = {
-				{
-					id = "test_view",
+				test_view = {
 					title = "Test View",
 					source = "tasks",
 					filters = { states = { "TODO" } },
@@ -24,49 +23,48 @@ T["config validation - valid view config"] = function()
 
 	-- Should not error
 	config.setup(test_config)
-	MiniTest.expect.equality(config.agendas.views[1].id, "test_view")
-	MiniTest.expect.equality(config.agendas.views[1].title, "Test View")
+	MiniTest.expect.equality(config.agendas.views.test_view.title, "Test View")
+	MiniTest.expect.equality(config.agendas.views.test_view.source, "tasks")
 end
 
 T["config validation - default views exist"] = function()
 	-- Reset to defaults
 	config.setup({})
 
-	-- Helper to find view by ID
-	local function find_view(id)
-		for _, view in ipairs(config.agendas.views) do
-			if view.id == id then
-				return view
-			end
-		end
-	end
-
-	-- Check default views are present in array
-	local tasks = find_view("tasks")
-	local calendar = find_view("calendar")
+	-- Check default views are present as object keys
+	local tasks = config.agendas.views.tasks
+	local calendar = config.agendas.views.calendar
+	local inbox = config.agendas.views.inbox
 
 	MiniTest.expect.no_equality(tasks, nil)
 	MiniTest.expect.no_equality(calendar, nil)
+	MiniTest.expect.no_equality(inbox, nil)
 	MiniTest.expect.equality(tasks.source, "tasks")
 	MiniTest.expect.equality(calendar.source, "calendar")
+	MiniTest.expect.equality(inbox.source, "all")
 end
 
-T["config validation - views array defaults"] = function()
+T["config validation - views ordered correctly"] = function()
 	config.setup({})
 
-	MiniTest.expect.equality(config.agendas.views[1].id, "tasks")
-	MiniTest.expect.equality(config.agendas.views[2].id, "calendar")
-	MiniTest.expect.equality(config.agendas.views[3].id, "inbox")
-	-- Verify it's an array (has numeric indices)
-	MiniTest.expect.equality(vim.tbl_islist(config.agendas.views), true)
+	-- Use get_ordered_views() to get sorted array
+	local ordered = config.get_ordered_views()
+
+	MiniTest.expect.equality(ordered[1].id, "tasks")
+	MiniTest.expect.equality(ordered[2].id, "calendar")
+	MiniTest.expect.equality(ordered[3].id, "inbox")
+	-- Verify ordered views is an array
+	MiniTest.expect.equality(vim.tbl_islist(ordered), true)
+	-- Verify config.agendas.views is now an object (not a list)
+	MiniTest.expect.equality(vim.tbl_islist(config.agendas.views), false)
 end
 
-T["config validation - custom view override"] = function()
+T["config validation - custom views are additive"] = function()
 	local test_config = {
 		agendas = {
 			views = {
-				{
-					id = "my_custom_view",
+				my_custom_view = {
+					order = 4,
 					title = "Next 14 Days",
 					source = "calendar",
 					filters = { date_range = { days = 14 } },
@@ -78,11 +76,15 @@ T["config validation - custom view override"] = function()
 	}
 
 	config.setup(test_config)
-	-- When you provide views as array, it replaces the entire default array
-	MiniTest.expect.equality(#config.agendas.views, 1)
-	MiniTest.expect.equality(config.agendas.views[1].id, "my_custom_view")
-	MiniTest.expect.equality(config.agendas.views[1].title, "Next 14 Days")
-	MiniTest.expect.equality(config.agendas.views[1].filters.date_range.days, 14)
+	-- When you provide views as object, they merge with defaults
+	MiniTest.expect.no_equality(config.agendas.views.tasks, nil) -- Default still exists
+	MiniTest.expect.no_equality(config.agendas.views.my_custom_view, nil) -- Custom added
+	MiniTest.expect.equality(config.agendas.views.my_custom_view.title, "Next 14 Days")
+	MiniTest.expect.equality(config.agendas.views.my_custom_view.filters.date_range.days, 14)
+
+	-- Verify ordered views includes both defaults and custom
+	local ordered = config.get_ordered_views()
+	MiniTest.expect.equality(#ordered, 4) -- 3 defaults + 1 custom
 end
 
 T["show_tabbed_agenda - function exists"] = function()

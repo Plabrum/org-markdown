@@ -54,12 +54,12 @@ T["merge"]["replaces arrays instead of merging"] = function()
 	MiniTest.expect.equality(states[2], "x")
 end
 
-T["merge"]["views array replacement"] = function()
+T["merge"]["views object merging"] = function()
 	config.setup({
 		agendas = {
 			views = {
-				{
-					id = "custom",
+				custom = {
+					order = 1,
 					title = "Custom View",
 					source = "tasks",
 				},
@@ -67,10 +67,14 @@ T["merge"]["views array replacement"] = function()
 		},
 	})
 
-	-- Views is an array - should be REPLACED, not merged
-	MiniTest.expect.equality(#config.agendas.views, 1, "Should replace entire array")
-	MiniTest.expect.equality(config.agendas.views[1].id, "custom")
-	MiniTest.expect.equality(config.agendas.views[1].title, "Custom View")
+	-- Views is an object - should be MERGED with defaults
+	MiniTest.expect.no_equality(config.agendas.views.tasks, nil, "Default tasks view should still exist")
+	MiniTest.expect.no_equality(config.agendas.views.custom, nil, "Custom view should be added")
+	MiniTest.expect.equality(config.agendas.views.custom.title, "Custom View")
+
+	-- Verify ordered views includes both
+	local ordered = config.get_ordered_views()
+	MiniTest.expect.equality(#ordered >= 4, true, "Should have at least 3 defaults + 1 custom")
 end
 
 T["validation"] = MiniTest.new_set()

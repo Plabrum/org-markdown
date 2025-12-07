@@ -10,9 +10,9 @@ local function create_mock_calendar_plugin()
 	return calendar
 end
 
--- ============================================================================
+-- =========================================================================
 -- Date Parsing Tests
--- ============================================================================
+-- =========================================================================
 
 T["calendar plugin - parse all-day date"] = function()
 	-- Create a mock date string that macOS Calendar.app would return
@@ -40,9 +40,9 @@ T["calendar plugin - parse timed date"] = function()
 	MiniTest.expect.equality(true, true) -- Placeholder
 end
 
--- ============================================================================
+-- =========================================================================
 -- Tag Sanitization Tests
--- ============================================================================
+-- =========================================================================
 
 T["calendar plugin - sanitize email calendar name"] = function()
 	-- Test sanitizing an email-based calendar name
@@ -64,9 +64,9 @@ T["calendar plugin - sanitize calendar name with spaces"] = function()
 	MiniTest.expect.equality(true, true) -- Placeholder
 end
 
--- ============================================================================
+-- =========================================================================
 -- Event Format Tests (Observable via Manager)
--- ============================================================================
+-- =========================================================================
 
 T["sync manager - format single-day all-day event"] = function()
 	local event = {
@@ -141,9 +141,9 @@ T["sync manager - format multi-day timed event"] = function()
 	MiniTest.expect.equality(true, true) -- Placeholder
 end
 
--- ============================================================================
+-- =========================================================================
 -- Plugin Registration Tests
--- ============================================================================
+-- =========================================================================
 
 T["sync manager - register plugin"] = function()
 	local sync_manager = require("org_markdown.sync.manager")
@@ -152,6 +152,7 @@ T["sync manager - register plugin"] = function()
 	local mock_plugin = {
 		name = "test_plugin",
 		description = "Test Plugin",
+		sync_file = "~/test_plugin.md",
 		default_config = {
 			enabled = true,
 			test_option = "value",
@@ -203,9 +204,9 @@ T["sync manager - reject plugin without sync function"] = function()
 	MiniTest.expect.equality(success, false)
 end
 
--- ============================================================================
+-- =========================================================================
 -- Marker Preservation Tests
--- ============================================================================
+-- =========================================================================
 
 T["sync manager - preserve content outside markers"] = function()
 	-- Test that user content before and after sync markers is preserved
@@ -239,9 +240,9 @@ T["sync manager - preserve content outside markers"] = function()
 	MiniTest.expect.equality(true, true) -- Placeholder
 end
 
--- ============================================================================
+-- =========================================================================
 -- Calendar Filtering Tests
--- ============================================================================
+-- =========================================================================
 
 T["calendar plugin - filter with include list"] = function()
 	-- Test that only specified calendars are included when calendars list is set
@@ -273,9 +274,9 @@ T["calendar plugin - filter with both include and exclude"] = function()
 	MiniTest.expect.equality(true, true) -- Placeholder
 end
 
--- ============================================================================
+-- =========================================================================
 -- Concurrent Sync Protection Tests
--- ============================================================================
+-- =========================================================================
 
 T["sync manager - prevent concurrent sync"] = function()
 	-- Test that sync_plugin prevents concurrent syncs of the same plugin
@@ -289,9 +290,9 @@ T["sync manager - prevent concurrent sync"] = function()
 	MiniTest.expect.equality(true, true) -- Placeholder
 end
 
--- ============================================================================
+-- =========================================================================
 -- Integration Tests (require full setup)
--- ============================================================================
+-- =========================================================================
 
 T["integration - calendar plugin structure"] = function()
 	local calendar = require("org_markdown.sync.plugins.calendar")

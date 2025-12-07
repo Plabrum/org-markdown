@@ -41,12 +41,17 @@ setup_highlight_groups()
 
 -- Helper to find view by ID
 local function find_view(view_id)
-	for _, view in ipairs(config.agendas.views) do
-		if view.id == view_id then
-			return view
-		end
+	if not config.agendas or not config.agendas.views then
+		return nil
 	end
-	return nil
+	local view_def = config.agendas.views[view_id]
+	if not view_def then
+		return nil
+	end
+	-- Return with id field included
+	local view = vim.deepcopy(view_def)
+	view.id = view_id
+	return view
 end
 
 -- Helper function to cycle TODO state in a file
@@ -481,7 +486,7 @@ function M.show_view(view_id)
 	-- Configure line wrapping with indentation for continuation lines
 	vim.wo[win].wrap = true
 	vim.wo[win].breakindent = true
-	vim.wo[win].breakindentopt = "shift:12"
+	vim.wo[win].breakindentopt = "shift:7"
 
 	-- Add keymap to jump to file
 	vim.keymap.set("n", "<CR>", function()
@@ -587,14 +592,15 @@ function M.show_tabbed_agenda()
 	-- Configure line wrapping with indentation for continuation lines
 	vim.wo[win].wrap = true
 	vim.wo[win].breakindent = true
-	vim.wo[win].breakindentopt = "shift:12"
+	vim.wo[win].breakindentopt = "shift:7"
 
 	-- Setup cycler for tab navigation
 	local cycler = require("org_markdown.utils.cycler")
 
-	-- Extract view IDs in order (preserves config order)
+	-- Extract view IDs in order (sorted by order field)
+	local ordered_views = config.get_ordered_views()
 	local view_ids = {}
-	for _, view in ipairs(config.agendas.views) do
+	for _, view in ipairs(ordered_views) do
 		table.insert(view_ids, view.id)
 	end
 
@@ -650,7 +656,8 @@ function M.show_tabbed_agenda()
 
 		-- Get current view for formatting
 		local current_tab = vim.b[buf].agenda_current_tab or 1
-		local current_view = config.agendas.views[current_tab]
+		local ordered_views = config.get_ordered_views()
+		local current_view = ordered_views[current_tab]
 
 		-- Update just this line with the new state
 		local format_name = (current_view.display and current_view.display.format) or "timeline"
@@ -678,7 +685,7 @@ function M.show_tabbed_agenda()
 
 	-- Load content for the current tab (after setup has restored the saved tab)
 	local current_tab = vim.b[buf].agenda_current_tab or 1
-	local current_view_id = config.agendas.views[current_tab].id
+	local current_view_id = ordered_views[current_tab].id
 	local current_view_def = find_view(current_view_id)
 	refresh_tab_content(buf, win, current_tab, current_view_id)
 

@@ -51,7 +51,7 @@ function M.cycle_status_inline(line, states)
 
 	-- Preserve spacing: if rest starts with content, add a space; otherwise keep as-is
 	local new_rest = rest
-	if rest and rest ~= "" and not rest:match("^%s") and not rest:match("^[%p]") then
+	if rest and rest ~= "" and not rest:match("^%s") then
 		new_rest = " " .. rest
 	end
 
