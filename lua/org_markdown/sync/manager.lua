@@ -61,11 +61,25 @@ function M.execute_command(cmd)
 	-- Auto-await if we're in a coroutine context (plugin.pull() is wrapped in async.run)
 	local co = coroutine.running()
 	if co then
-		-- We're in a coroutine - auto-await and return result directly
-		local ok, result = pcall(function()
-			return promise:await()
-		end)
-		if ok then
+		-- We're in a coroutine - manually handle promise to avoid throwing errors
+		-- Set up callbacks and yield
+		local success, result
+		promise
+			:then_(function(val)
+				success = true
+				result = val
+				coroutine.resume(co)
+			end)
+			:catch_(function(e)
+				success = false
+				result = e
+				coroutine.resume(co)
+			end)
+
+		coroutine.yield()
+
+		-- Return result
+		if success then
 			return result, nil
 		else
 			return nil, tostring(result)
