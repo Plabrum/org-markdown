@@ -34,25 +34,14 @@ local M = {
 }
 
 -- =========================================================================
--- SETUP & VALIDATION
--- =========================================================================
-
-function M.setup(plugin_config)
-	-- Validate macOS
-	if vim.fn.has("mac") == 0 then
-		vim.notify("Calendar sync requires macOS (Calendar.app)", vim.log.levels.WARN)
-		return false
-	end
-	return true
-end
-
--- =========================================================================
 -- CALENDAR ACCESS (Swift)
 -- =========================================================================
 
 --- Get list of all available calendars from Calendar.app (using Swift helper)
 --- @return table|nil, string|nil calendar_names, error
 local function get_available_calendars()
+	local manager = require("org_markdown.sync.manager")
+
 	-- Get path to Swift helper script
 	local script_dir = vim.fn.fnamemodify(debug.getinfo(1, "S").source:sub(2), ":h")
 	local swift_script = script_dir .. "/calendar_fetch.swift"
@@ -62,13 +51,13 @@ local function get_available_calendars()
 		return nil, "Calendar Swift helper not found: " .. swift_script
 	end
 
-	-- Execute Swift script in list mode
+	-- Execute Swift script in list mode (async, non-blocking)
 	local cmd = string.format("%s --list-calendars", vim.fn.shellescape(swift_script))
-	local output = vim.fn.systemlist(cmd)
+	local output, err = manager.execute_command(cmd)
 
-	if vim.v.shell_error ~= 0 then
-		local error_msg = table.concat(output, "\n")
-		if error_msg == "" then
+	if not output then
+		local error_msg = err or "Unknown error"
+		if error_msg == "" or error_msg:match("^Command failed") then
 			error_msg = "Calendar access denied. Grant permissions in System Preferences > Privacy & Security"
 		end
 		return nil, error_msg
@@ -88,6 +77,8 @@ end
 --- @param end_date string YYYY-MM-DD format
 --- @return table|nil, string|nil events, error
 local function fetch_calendar_events(calendars, start_date, end_date)
+	local manager = require("org_markdown.sync.manager")
+
 	-- Convert YYYY-MM-DD to day offset from today
 	local function days_from_today(iso_date)
 		local year, month, day = iso_date:match("(%d%d%d%d)-(%d%d)-(%d%d)")
@@ -111,19 +102,14 @@ local function fetch_calendar_events(calendars, start_date, end_date)
 		return nil, "Calendar Swift helper not found: " .. swift_script
 	end
 
-	vim.notify(string.format("Fetching events from %d calendar(s)...", #calendars), vim.log.levels.INFO)
-
-	-- Execute Swift script (much faster than AppleScript!)
+	-- Execute Swift script (async, non-blocking)
 	local cmd =
 		string.format("%s %s %d %d", vim.fn.shellescape(swift_script), vim.fn.shellescape(cal_list), days_behind, days_ahead)
 
-	local output = vim.fn.systemlist(cmd)
+	local output, err = manager.execute_command(cmd)
 
-	if vim.v.shell_error ~= 0 then
-		local error_msg = table.concat(output, "\n")
-		if error_msg == "" then
-			error_msg = "Swift calendar helper failed (exit code: " .. vim.v.shell_error .. ")"
-		end
+	if not output then
+		local error_msg = err or "Swift calendar helper failed"
 		return nil, error_msg
 	end
 
@@ -367,235 +353,209 @@ local function update_item_with_uid(file, line_num, uid)
 	utils.write_lines(file, lines)
 end
 
---- Execute Swift script asynchronously
---- @param cmd string Command to execute
---- @return table Promise that resolves to output or rejects with error
-local function execute_swift_async(cmd)
-	return async.promise(function(resolve, reject)
-		vim.fn.jobstart(cmd, {
-			stdout_buffered = true,
-			stderr_buffered = true,
-			on_stdout = function(_, data)
-				if data and #data > 0 then
-					resolve(data)
-				end
-			end,
-			on_stderr = function(_, data)
-				if data and #data > 0 then
-					local error_msg = table.concat(data, "\n")
-					reject(error_msg)
-				end
-			end,
-			on_exit = function(_, exit_code)
-				if exit_code ~= 0 then
-					reject("Swift script failed with exit code: " .. exit_code)
-				end
-			end,
-		})
-	end)
-end
-
---- Create event in Calendar.app via Swift script (async)
+--- Create event in Calendar.app via Swift script
 --- @param item table Item with title, start_date, start_time, end_time, all_day, body
---- @return table Promise that resolves to UID or rejects with error
-local function create_calendar_event_async(item)
-	return async.promise(function(resolve, reject)
-		local plugin_config = config.sync and config.sync.plugins and config.sync.plugins.calendar or M.default_config
-		local target_cal = plugin_config.push and plugin_config.push.target_calendar or "org-markdown"
+--- @return string|nil, string|nil UID (success), error message (failure)
+local function create_calendar_event(item)
+	local manager = require("org_markdown.sync.manager")
+	local plugin_config = config.sync and config.sync.plugins and config.sync.plugins.calendar or M.default_config
+	local target_cal = plugin_config.push and plugin_config.push.target_calendar or "org-markdown"
 
-		-- Get path to Swift script
-		local script_dir = vim.fn.fnamemodify(debug.getinfo(1, "S").source:sub(2), ":h")
-		local swift_script = script_dir .. "/calendar_push.swift"
+	-- Get path to Swift script
+	local script_dir = vim.fn.fnamemodify(debug.getinfo(1, "S").source:sub(2), ":h")
+	local swift_script = script_dir .. "/calendar_push.swift"
 
-		if vim.fn.filereadable(swift_script) == 0 then
-			return reject("Calendar push script not found: " .. swift_script)
-		end
+	if vim.fn.filereadable(swift_script) == 0 then
+		return nil, "Calendar push script not found: " .. swift_script
+	end
 
-		-- Convert date to ISO format
-		local start_iso = datetime.to_iso_string(item.start_date)
-		if not start_iso then
-			return reject("Invalid start date for item: " .. item.title)
-		end
+	-- Convert date to ISO format
+	local start_iso = datetime.to_iso_string(item.start_date)
+	if not start_iso then
+		return nil, "Invalid start date for item: " .. item.title
+	end
 
-		-- Add time to start date
-		if item.start_time and not item.all_day then
-			start_iso = start_iso .. "T" .. item.start_time .. ":00"
+	-- Add time to start date
+	if item.start_time and not item.all_day then
+		start_iso = start_iso .. "T" .. item.start_time .. ":00"
+	else
+		start_iso = start_iso .. "T00:00:00"
+	end
+
+	-- Calculate end date/time
+	local end_iso
+	if item.end_date then
+		-- Multi-day event
+		end_iso = datetime.to_iso_string(item.end_date)
+		if not end_iso then
+			end_iso = start_iso
 		else
-			start_iso = start_iso .. "T00:00:00"
-		end
-
-		-- Calculate end date/time
-		local end_iso
-		if item.end_date then
-			-- Multi-day event
-			end_iso = datetime.to_iso_string(item.end_date)
-			if not end_iso then
-				end_iso = start_iso
+			if item.end_time and not item.all_day then
+				end_iso = end_iso .. "T" .. item.end_time .. ":00"
 			else
-				if item.end_time and not item.all_day then
-					end_iso = end_iso .. "T" .. item.end_time .. ":00"
-				else
-					end_iso = end_iso .. "T23:59:59"
-				end
-			end
-		elseif item.end_time and not item.all_day then
-			-- Same-day event with end time
-			end_iso = datetime.to_iso_string(item.start_date) .. "T" .. item.end_time .. ":00"
-		else
-			-- Use start as end (1-hour default or all-day)
-			if item.all_day then
-				end_iso = start_iso
-			else
-				-- Default 1-hour duration
-				end_iso = start_iso
+				end_iso = end_iso .. "T23:59:59"
 			end
 		end
-
-		-- Build command
-		local cmd = string.format(
-			"%s --create %s --title %s --start %s --end %s --all-day %s",
-			vim.fn.shellescape(swift_script),
-			vim.fn.shellescape(target_cal),
-			vim.fn.shellescape(item.title),
-			vim.fn.shellescape(start_iso),
-			vim.fn.shellescape(end_iso),
-			item.all_day and "true" or "false"
-		)
-
-		-- Add optional location and notes
-		if item.location and item.location ~= "" then
-			cmd = cmd .. " --location " .. vim.fn.shellescape(item.location)
+	elseif item.end_time and not item.all_day then
+		-- Same-day event with end time
+		end_iso = datetime.to_iso_string(item.start_date) .. "T" .. item.end_time .. ":00"
+	else
+		-- Use start as end (1-hour default or all-day)
+		if item.all_day then
+			end_iso = start_iso
+		else
+			-- Default 1-hour duration
+			end_iso = start_iso
 		end
-		if item.body and item.body ~= "" then
-			cmd = cmd .. " --notes " .. vim.fn.shellescape(item.body)
-		end
+	end
 
-		-- Execute async
-		execute_swift_async(cmd)
-			:then_(function(output)
-				if output and #output > 0 then
-					-- Get UID from first line (remove empty lines)
-					for _, line in ipairs(output) do
-						if line and line ~= "" then
-							resolve({ uid = line, item = item })
-							return
-						end
-					end
-					reject("No UID returned from Swift script")
-				else
-					reject("No output from Swift script")
-				end
+	-- Build command
+	local cmd = string.format(
+		"%s --create %s --title %s --start %s --end %s --all-day %s",
+		vim.fn.shellescape(swift_script),
+		vim.fn.shellescape(target_cal),
+		vim.fn.shellescape(item.title),
+		vim.fn.shellescape(start_iso),
+		vim.fn.shellescape(end_iso),
+		item.all_day and "true" or "false"
+	)
+
+	-- Add optional location and notes
+	if item.location and item.location ~= "" then
+		cmd = cmd .. " --location " .. vim.fn.shellescape(item.location)
+	end
+	if item.body and item.body ~= "" then
+		cmd = cmd .. " --notes " .. vim.fn.shellescape(item.body)
+	end
+
+	-- Execute async (auto-awaits in coroutine context)
+	local output, err = manager.execute_command(cmd)
+
+	if not output then
+		-- Check if it's a calendar creation error
+		if err and err:match("does not allow calendars to be added") then
+			vim.schedule(function()
+				vim.notify(
+					string.format(
+						"Calendar '%s' not found. Please create it manually in Calendar.app or set push.target_calendar to an existing calendar.",
+						target_cal
+					),
+					vim.log.levels.WARN
+				)
 			end)
-			:catch_(function(error_msg)
-				-- Check if it's a calendar creation error
-				if error_msg:match("does not allow calendars to be added") then
-					vim.schedule(function()
-						vim.notify(
-							string.format(
-								"Calendar '%s' not found. Please create it manually in Calendar.app or set push.target_calendar to an existing calendar.",
-								target_cal
-							),
-							vim.log.levels.WARN
-						)
-					end)
-				else
-					vim.schedule(function()
-						vim.notify(string.format("Failed to create event '%s': %s", item.title, error_msg), vim.log.levels.ERROR)
-					end)
-				end
-				reject(error_msg)
+		else
+			vim.schedule(function()
+				vim.notify(
+					string.format("Failed to create event '%s': %s", item.title, err or "Unknown error"),
+					vim.log.levels.ERROR
+				)
 			end)
-	end)
+		end
+		return nil, err or "Failed to create event"
+	end
+
+	-- Get UID from first line (remove empty lines)
+	for _, line in ipairs(output) do
+		if line and line ~= "" then
+			return line, nil -- Return UID
+		end
+	end
+
+	return nil, "No UID returned from Swift script"
 end
 
---- Update existing event in Calendar.app via Swift script (async)
---- @param item table Item with uid, title, start_date, start_time, end_time, all_day
---- @return table Promise that resolves to true or rejects with error
-local function update_calendar_event_async(item)
-	return async.promise(function(resolve, reject)
-		if not item.uid then
-			return reject("No UID provided for update")
-		end
+--- Update existing event in Calendar.app via Swift script
+--- @param item table Item with uid, title, start_date, start_time, end_time, all_day, file, line
+--- @return boolean, string|nil Success, error message (failure)
+local function update_calendar_event(item)
+	local manager = require("org_markdown.sync.manager")
 
-		local plugin_config = config.sync and config.sync.plugins and config.sync.plugins.calendar or M.default_config
-		local target_cal = plugin_config.push and plugin_config.push.target_calendar or "org-markdown"
+	if not item.uid then
+		return false, "No UID provided for update"
+	end
 
-		-- Get path to Swift script
-		local script_dir = vim.fn.fnamemodify(debug.getinfo(1, "S").source:sub(2), ":h")
-		local swift_script = script_dir .. "/calendar_push.swift"
+	local plugin_config = config.sync and config.sync.plugins and config.sync.plugins.calendar or M.default_config
+	local target_cal = plugin_config.push and plugin_config.push.target_calendar or "org-markdown"
 
-		if vim.fn.filereadable(swift_script) == 0 then
-			return reject("Calendar push script not found")
-		end
+	-- Get path to Swift script
+	local script_dir = vim.fn.fnamemodify(debug.getinfo(1, "S").source:sub(2), ":h")
+	local swift_script = script_dir .. "/calendar_push.swift"
 
-		-- Convert dates to ISO format
-		local start_iso = datetime.to_iso_string(item.start_date)
-		if not start_iso then
-			return reject("Invalid start date")
-		end
+	if vim.fn.filereadable(swift_script) == 0 then
+		return false, "Calendar push script not found"
+	end
 
-		if item.start_time and not item.all_day then
-			start_iso = start_iso .. "T" .. item.start_time .. ":00"
-		else
-			start_iso = start_iso .. "T00:00:00"
-		end
+	-- Convert dates to ISO format
+	local start_iso = datetime.to_iso_string(item.start_date)
+	if not start_iso then
+		return false, "Invalid start date"
+	end
 
-		local end_iso
-		if item.end_date then
-			end_iso = datetime.to_iso_string(item.end_date)
-			if end_iso then
-				if item.end_time and not item.all_day then
-					end_iso = end_iso .. "T" .. item.end_time .. ":00"
-				else
-					end_iso = end_iso .. "T23:59:59"
-				end
+	if item.start_time and not item.all_day then
+		start_iso = start_iso .. "T" .. item.start_time .. ":00"
+	else
+		start_iso = start_iso .. "T00:00:00"
+	end
+
+	local end_iso
+	if item.end_date then
+		end_iso = datetime.to_iso_string(item.end_date)
+		if end_iso then
+			if item.end_time and not item.all_day then
+				end_iso = end_iso .. "T" .. item.end_time .. ":00"
 			else
-				end_iso = start_iso
+				end_iso = end_iso .. "T23:59:59"
 			end
-		elseif item.end_time and not item.all_day then
-			end_iso = datetime.to_iso_string(item.start_date) .. "T" .. item.end_time .. ":00"
 		else
 			end_iso = start_iso
 		end
+	elseif item.end_time and not item.all_day then
+		end_iso = datetime.to_iso_string(item.start_date) .. "T" .. item.end_time .. ":00"
+	else
+		end_iso = start_iso
+	end
 
-		-- Build command
-		local cmd = string.format(
-			"%s --update %s %s --title %s --start %s --end %s --all-day %s",
-			vim.fn.shellescape(swift_script),
-			vim.fn.shellescape(item.uid),
-			vim.fn.shellescape(target_cal),
-			vim.fn.shellescape(item.title),
-			vim.fn.shellescape(start_iso),
-			vim.fn.shellescape(end_iso),
-			item.all_day and "true" or "false"
-		)
+	-- Build command
+	local cmd = string.format(
+		"%s --update %s %s --title %s --start %s --end %s --all-day %s",
+		vim.fn.shellescape(swift_script),
+		vim.fn.shellescape(item.uid),
+		vim.fn.shellescape(target_cal),
+		vim.fn.shellescape(item.title),
+		vim.fn.shellescape(start_iso),
+		vim.fn.shellescape(end_iso),
+		item.all_day and "true" or "false"
+	)
 
-		-- Execute async
-		execute_swift_async(cmd)
-			:then_(function()
-				-- Update Last Synced timestamp
-				vim.schedule(function()
-					update_item_with_uid(item.file, item.line, item.uid)
-				end)
-				resolve({ success = true, item = item })
+	-- Execute async (auto-awaits in coroutine context)
+	local output, err = manager.execute_command(cmd)
+
+	if not output then
+		-- Check if UID not found (event deleted in Calendar.app)
+		if err and err:match("Event not found") then
+			vim.schedule(function()
+				vim.notify(
+					string.format("Event '%s' not found in Calendar.app (may have been deleted). UID: %s", item.title, item.uid),
+					vim.log.levels.WARN
+				)
 			end)
-			:catch_(function(error_msg)
-				-- Check if UID not found (event deleted in Calendar.app)
-				if error_msg:match("Event not found") then
-					vim.schedule(function()
-						vim.notify(
-							string.format("Event '%s' not found in Calendar.app (may have been deleted). UID: %s", item.title, item.uid),
-							vim.log.levels.WARN
-						)
-					end)
-				else
-					vim.schedule(function()
-						vim.notify(string.format("Failed to update event '%s': %s", item.title, error_msg), vim.log.levels.ERROR)
-					end)
-				end
-				reject(error_msg)
+		else
+			vim.schedule(function()
+				vim.notify(
+					string.format("Failed to update event '%s': %s", item.title, err or "Unknown error"),
+					vim.log.levels.ERROR
+				)
 			end)
+		end
+		return false, err or "Failed to update event"
+	end
+
+	-- Update Last Synced timestamp
+	vim.schedule(function()
+		update_item_with_uid(item.file, item.line, item.uid)
 	end)
+
+	return true, nil
 end
 
 --- Push items from markdown files to Calendar.app (async)
@@ -671,10 +631,8 @@ function M.push_to_calendar()
 		for _, item in ipairs(items_to_push) do
 			if item.uid then
 				-- Update existing event
-				local ok, result = pcall(function()
-					return update_calendar_event_async(item):await()
-				end)
-				if ok then
+				local success, err = update_calendar_event(item)
+				if success then
 					results.success = results.success + 1
 					results.updated = results.updated + 1
 				else
@@ -682,12 +640,10 @@ function M.push_to_calendar()
 				end
 			else
 				-- Create new event
-				local ok, result = pcall(function()
-					return create_calendar_event_async(item):await()
-				end)
-				if ok and result and result.uid then
+				local uid, err = create_calendar_event(item)
+				if uid then
 					vim.schedule(function()
-						update_item_with_uid(item.file, item.line, result.uid)
+						update_item_with_uid(item.file, item.line, uid)
 					end)
 					results.success = results.success + 1
 					results.created = results.created + 1
@@ -714,13 +670,18 @@ function M.push_to_calendar()
 end
 
 -- =========================================================================
--- MAIN SYNC FUNCTION (now bidirectional)
+-- MAIN PULL FUNCTION (bidirectional sync)
 -- =========================================================================
 
-function M.sync()
+function M.pull()
 	local plugin_config = config.sync and config.sync.plugins and config.sync.plugins.calendar or M.default_config
 	if not plugin_config or not plugin_config.enabled then
 		return nil, "Calendar sync is disabled"
+	end
+
+	-- Validate macOS
+	if vim.fn.has("mac") == 0 then
+		return nil, "Calendar sync requires macOS (Calendar.app)"
 	end
 
 	-- ========== PULL: Calendar.app → calendar.md ==========

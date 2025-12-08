@@ -75,76 +75,30 @@ local M = {
 --- Get OAuth2 access token from gcloud CLI
 --- @return string|nil, string|nil Access token, error message
 local function get_gcloud_token()
+	local manager = require("org_markdown.sync.manager")
+
 	-- Check if gcloud is available
-	local gcloud_check = vim.fn.system("which gcloud")
-	if vim.v.shell_error ~= 0 then
+	local _, err = manager.execute_command("which gcloud")
+	if err then
 		return nil, "gcloud CLI not found. Install via 'brew install google-cloud-sdk'"
 	end
 
 	-- Get access token using gcloud
 	local cmd = "CLOUDSDK_PYTHON=/opt/homebrew/bin/python3 gcloud auth application-default print-access-token"
-	local token = vim.fn.system(cmd)
+	local token_lines, err = manager.execute_command(cmd)
 
-	if vim.v.shell_error ~= 0 then
+	if not token_lines then
 		return nil, "Failed to get gcloud token. Run 'gcloud auth application-default login' first"
 	end
 
-	-- Trim whitespace
-	token = token:match("^%s*(.-)%s*$")
+	-- Join lines and trim whitespace
+	local token = table.concat(token_lines, "\n"):match("^%s*(.-)%s*$")
 
 	if not token or token == "" then
 		return nil, "gcloud returned empty token"
 	end
 
 	return token, nil
-end
-
--- =========================================================================
--- SETUP & VALIDATION
--- =========================================================================
-
-function M.setup(plugin_config)
-	-- Resolve secrets from config (supports env:, cmd:, file: prefixes)
-	plugin_config.api_key = secrets.resolve(plugin_config.api_key)
-	plugin_config.access_token = secrets.resolve(plugin_config.access_token)
-	plugin_config.spreadsheet_id = secrets.resolve(plugin_config.spreadsheet_id)
-	plugin_config.quota_project = secrets.resolve(plugin_config.quota_project)
-
-	-- Validate authentication method (in order of preference)
-	local has_api_key = plugin_config.api_key and plugin_config.api_key ~= ""
-	local has_manual_token = plugin_config.access_token and plugin_config.access_token ~= ""
-	local use_gcloud = plugin_config.use_gcloud
-
-	if not has_api_key and not has_manual_token and not use_gcloud then
-		vim.notify(
-			"Google Sheets sync requires authentication. Choose one:\n"
-				.. "  1. api_key (simplest - requires public sheet)\n"
-				.. "  2. use_gcloud = true (OAuth via gcloud)\n"
-				.. "  3. access_token (manual OAuth token)",
-			vim.log.levels.WARN
-		)
-		return false
-	end
-
-	-- If using gcloud, test that it works
-	if use_gcloud and not has_manual_token and not has_api_key then
-		local token, err = get_gcloud_token()
-		if not token then
-			vim.notify("Google Sheets sync: gcloud validation failed: " .. err, vim.log.levels.WARN)
-			return false
-		end
-	end
-
-	-- Validate spreadsheet ID
-	if not plugin_config.spreadsheet_id or plugin_config.spreadsheet_id == "" then
-		vim.notify(
-			"Google Sheets sync requires a spreadsheet_id. Set config.sync.plugins.sheets.spreadsheet_id",
-			vim.log.levels.WARN
-		)
-		return false
-	end
-
-	return true
 end
 
 -- =========================================================================
@@ -257,6 +211,8 @@ end
 --- @param quota_project string|nil Google Cloud quota project ID (for OAuth)
 --- @return table|nil, string|nil Raw sheet data (2D array), error message
 local function fetch_sheet_data(spreadsheet_id, sheet_name, auth_param, use_api_key, quota_project)
+	local manager = require("org_markdown.sync.manager")
+
 	-- Build API URL with range (A:Z for all columns)
 	local range = sheet_name .. "!A:Z"
 	local base_url = string.format("https://sheets.googleapis.com/v4/spreadsheets/%s/values/%s", spreadsheet_id, range)
@@ -282,12 +238,15 @@ local function fetch_sheet_data(spreadsheet_id, sheet_name, auth_param, use_api_
 		end
 	end
 
-	local output = vim.fn.system(cmd)
+	-- Execute async (auto-awaits in coroutine context)
+	local output_lines, err = manager.execute_command(cmd)
 
-	-- Check for HTTP errors
-	if vim.v.shell_error ~= 0 then
-		return nil, "Google Sheets API request failed (HTTP error: " .. vim.v.shell_error .. ")"
+	if not output_lines then
+		return nil, "Google Sheets API request failed: " .. (err or "Unknown error")
 	end
+
+	-- Join lines into single string for JSON parsing
+	local output = table.concat(output_lines, "\n")
 
 	-- Parse JSON response
 	local ok, response = pcall(vim.fn.json_decode, output)
@@ -551,6 +510,8 @@ end
 --- @param quota_project string|nil Google Cloud quota project ID
 --- @return boolean, string|nil Success, error message
 local function update_sheet_row(spreadsheet_id, sheet_name, row_number, values, auth_token, quota_project)
+	local manager = require("org_markdown.sync.manager")
+
 	local range = string.format("%s!A%d:Z%d", sheet_name, row_number, row_number)
 	local url = string.format(
 		"https://sheets.googleapis.com/v4/spreadsheets/%s/values/%s?valueInputOption=RAW",
@@ -566,11 +527,14 @@ local function update_sheet_row(spreadsheet_id, sheet_name, row_number, values, 
 
 	local cmd = string.format('curl -s -X PUT %s -d %s "%s"', headers, vim.fn.shellescape(payload), url)
 
-	local output = vim.fn.system(cmd)
-	if vim.v.shell_error ~= 0 then
-		return false, "Failed to update row " .. row_number
+	-- Execute async (auto-awaits in coroutine context)
+	local output_lines, err = manager.execute_command(cmd)
+
+	if not output_lines then
+		return false, "Failed to update row " .. row_number .. ": " .. (err or "Unknown error")
 	end
 
+	local output = table.concat(output_lines, "\n")
 	local ok, response = pcall(vim.fn.json_decode, output)
 	if not ok or response.error then
 		return false,
@@ -588,6 +552,8 @@ end
 --- @param quota_project string|nil Google Cloud quota project ID
 --- @return number|nil, string|nil Row number, error message
 local function append_sheet_row(spreadsheet_id, sheet_name, values, auth_token, quota_project)
+	local manager = require("org_markdown.sync.manager")
+
 	local range = string.format("%s!A:Z", sheet_name)
 	local url = string.format(
 		"https://sheets.googleapis.com/v4/spreadsheets/%s/values/%s:append?valueInputOption=RAW",
@@ -603,11 +569,14 @@ local function append_sheet_row(spreadsheet_id, sheet_name, values, auth_token, 
 
 	local cmd = string.format('curl -s -X POST %s -d %s "%s"', headers, vim.fn.shellescape(payload), url)
 
-	local output = vim.fn.system(cmd)
-	if vim.v.shell_error ~= 0 then
-		return nil, "Failed to append row"
+	-- Execute async (auto-awaits in coroutine context)
+	local output_lines, err = manager.execute_command(cmd)
+
+	if not output_lines then
+		return nil, "Failed to append row: " .. (err or "Unknown error")
 	end
 
+	local output = table.concat(output_lines, "\n")
 	local ok, response = pcall(vim.fn.json_decode, output)
 	if not ok or response.error then
 		return nil, "Failed to append row: " .. (response.error and response.error.message or "Unknown error")
@@ -623,10 +592,10 @@ local function append_sheet_row(spreadsheet_id, sheet_name, values, auth_token, 
 end
 
 -- =========================================================================
--- MAIN SYNC FUNCTION
+-- MAIN PULL FUNCTION
 -- =========================================================================
 
-function M.sync()
+function M.pull()
 	local plugin_config = config.sync.plugins.sheets
 
 	-- Check if plugin is enabled
@@ -634,29 +603,38 @@ function M.sync()
 		return nil, "Google Sheets sync is disabled"
 	end
 
-	-- Re-resolve secrets (setup() resolves them, but we need to do it again in sync())
-	local secrets = require("org_markdown.utils.secrets")
+	-- Resolve secrets from config (supports env:, cmd:, file: prefixes)
 	local api_key = secrets.resolve(plugin_config.api_key)
 	local access_token = secrets.resolve(plugin_config.access_token)
 	local spreadsheet_id = secrets.resolve(plugin_config.spreadsheet_id)
 	local quota_project = secrets.resolve(plugin_config.quota_project)
 
+	-- Validate spreadsheet ID
 	if not spreadsheet_id or spreadsheet_id == "" then
-		return nil, "Spreadsheet ID not found. Check that env:SHEETS_SPREADSHEET_ID is set in ~/.config/nvim/.env"
+		return nil, "Spreadsheet ID not configured. Set config.sync.plugins.sheets.spreadsheet_id"
+	end
+
+	-- Validate authentication method (in order of preference)
+	local has_api_key = api_key and api_key ~= ""
+	local has_manual_token = access_token and access_token ~= ""
+	local use_gcloud = plugin_config.use_gcloud
+
+	if not has_api_key and not has_manual_token and not use_gcloud then
+		return nil, "Google Sheets sync requires authentication (api_key, access_token, or use_gcloud=true)"
 	end
 
 	-- Determine auth method and get credential
 	local auth_param
 	local use_api_key = false
 
-	if api_key and api_key ~= "" then
+	if has_api_key then
 		-- Prefer API key (simplest)
 		auth_param = api_key
 		use_api_key = true
-	elseif access_token and access_token ~= "" then
+	elseif has_manual_token then
 		-- Use manual OAuth token
 		auth_param = access_token
-	elseif plugin_config.use_gcloud then
+	elseif use_gcloud then
 		-- Get OAuth token from gcloud
 		local token, err = get_gcloud_token()
 		if not token then
@@ -664,7 +642,7 @@ function M.sync()
 		end
 		auth_param = token
 	else
-		return nil, "No authentication method configured. Check that env:GOOGLE_SHEETS_API_KEY is set in ~/.config/nvim/.env"
+		return nil, "No authentication method available"
 	end
 
 	-- Fetch sheet data from Google Sheets API

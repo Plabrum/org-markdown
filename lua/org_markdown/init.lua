@@ -36,8 +36,18 @@ function M.setup(opts)
 		end
 	end
 
+	-- Automatic pull on startup for all enabled plugins
+	-- All sync operations are fully async (non-blocking) using vim.fn.jobstart.
+	-- The UI will remain responsive even during network requests.
+	-- Runs silently in the background - no notifications.
+	--
+	-- To manually sync: :MarkdownSyncAll or :MarkdownSyncCalendar, etc.
+	vim.defer_fn(function()
+		sync_manager.pull_all_async()
+	end, 100)
+
 	-- Setup auto-sync for enabled plugins
-	sync_manager.setup_auto_sync()
+	-- sync_manager.setup_auto_sync()
 end
 
 return M

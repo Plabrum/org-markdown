@@ -1,6 +1,7 @@
 local config = require("org_markdown.config")
 local utils = require("org_markdown.utils.utils")
 local datetime = require("org_markdown.utils.datetime")
+local async = require("org_markdown.utils.async")
 
 local M = {}
 
@@ -9,6 +10,71 @@ M.plugins = {}
 
 -- Auto-sync timers
 local auto_sync_timers = {}
+
+-- =====================================================================
+-- ASYNC COMMAND EXECUTION
+-- =====================================================================
+
+--- Execute a shell command asynchronously (non-blocking)
+--- When called from a coroutine context (inside async.run), automatically awaits and returns the result directly
+--- When called outside a coroutine, returns a promise
+--- @param cmd string|table Command to execute (string or table for jobstart)
+--- @return table|nil, string|nil Output lines (success), error message (failure)
+function M.execute_command(cmd)
+	local promise = async.promise(function(resolve, reject)
+		local stdout_lines = {}
+		local stderr_lines = {}
+
+		vim.fn.jobstart(cmd, {
+			stdout_buffered = true,
+			stderr_buffered = true,
+			on_stdout = function(_, data)
+				if data then
+					for _, line in ipairs(data) do
+						if line ~= "" then
+							table.insert(stdout_lines, line)
+						end
+					end
+				end
+			end,
+			on_stderr = function(_, data)
+				if data then
+					for _, line in ipairs(data) do
+						if line ~= "" then
+							table.insert(stderr_lines, line)
+						end
+					end
+				end
+			end,
+			on_exit = function(_, exit_code)
+				if exit_code == 0 then
+					resolve(stdout_lines)
+				else
+					local error_msg = #stderr_lines > 0 and table.concat(stderr_lines, "\n")
+						or ("Command failed with exit code " .. exit_code)
+					reject(error_msg)
+				end
+			end,
+		})
+	end)
+
+	-- Auto-await if we're in a coroutine context (plugin.pull() is wrapped in async.run)
+	local co = coroutine.running()
+	if co then
+		-- We're in a coroutine - auto-await and return result directly
+		local ok, result = pcall(function()
+			return promise:await()
+		end)
+		if ok then
+			return result, nil
+		else
+			return nil, tostring(result)
+		end
+	else
+		-- Not in coroutine - return promise for manual handling
+		return promise
+	end
+end
 
 -- =====================================================================
 -- ITEM VALIDATION SCHEMA
@@ -86,7 +152,6 @@ local ITEM_SCHEMA = {
 			if not v then
 				return true
 			end
-			local config = require("org_markdown.config")
 			local valid_states = config.status_states
 			return vim.tbl_contains(valid_states, v)
 		end,
@@ -193,8 +258,8 @@ function M.register_plugin(plugin_module)
 		return false
 	end
 
-	if type(plugin_module.sync) ~= "function" then
-		vim.notify("Sync plugin '" .. plugin_module.name .. "' missing 'sync' function", vim.log.levels.ERROR)
+	if type(plugin_module.pull) ~= "function" then
+		vim.notify("Sync plugin '" .. plugin_module.name .. "' missing 'pull' function", vim.log.levels.ERROR)
 		return false
 	end
 
@@ -231,19 +296,6 @@ function M.register_plugin(plugin_module)
 		end
 
 		merge_config(plugin_module.default_config, config.sync.plugins[plugin_module.name])
-	end
-
-	-- Call plugin setup if it exists
-	if type(plugin_module.setup) == "function" then
-		local ok, err = pcall(plugin_module.setup, config.sync.plugins[plugin_module.name])
-		if not ok then
-			vim.notify("Failed to setup sync plugin '" .. plugin_module.name .. "': " .. tostring(err), vim.log.levels.ERROR)
-			return false
-		end
-		if err == false then
-			-- Setup returned false (e.g., platform check failed)
-			return false
-		end
 	end
 
 	-- Setup auto-push if enabled and plugin supports it
@@ -402,7 +454,7 @@ end
 -- SYNC OPERATIONS
 -- =========================================================================
 
---- Sync a specific plugin
+--- Sync a specific plugin (pull data from external source)
 --- @param plugin_name string Name of plugin to sync
 function M.sync_plugin(plugin_name)
 	local plugin = M.plugins[plugin_name]
@@ -420,70 +472,83 @@ function M.sync_plugin(plugin_name)
 	-- Set syncing flag to prevent auto-push during sync
 	plugin._is_syncing = true
 
-	-- Call plugin sync
-	local ok, result, err = pcall(plugin.sync)
-	if not ok then
-		-- pcall failed (exception thrown)
+	-- Run plugin pull in async context (allows plugins to use execute_command with :await())
+	async.run(function()
+		local ok, result, err = pcall(plugin.pull)
+
+		if not ok then
+			-- pcall failed (exception thrown)
+			plugin._is_syncing = false
+			vim.schedule(function()
+				vim.notify(
+					string.format("Pull failed for %s: %s", plugin.description or plugin_name, tostring(result)),
+					vim.log.levels.ERROR
+				)
+			end)
+			return
+		end
+
+		if not result then
+			-- pull() returned nil (with optional error message)
+			plugin._is_syncing = false
+			vim.schedule(function()
+				vim.notify(
+					string.format("Pull failed for %s: %s", plugin.description or plugin_name, tostring(err or "no data")),
+					vim.log.levels.ERROR
+				)
+			end)
+			return
+		end
+
+		-- Extract items and stats
+		local items = result.items or result.events or {} -- Support both "items" and legacy "events"
+		local stats = result.stats or {}
+
+		if #items == 0 then
+			plugin._is_syncing = false
+			vim.schedule(function()
+				vim.notify(
+					string.format("Pull completed for %s: no items returned", plugin.description or plugin_name),
+					vim.log.levels.WARN
+				)
+			end)
+			return
+		end
+
+		-- Validate and filter items
+		local valid_items = vim.tbl_filter(function(item)
+			local valid = validate_item(item, plugin_name)
+			return valid
+		end, items)
+
+		if #valid_items == 0 then
+			plugin._is_syncing = false
+			vim.schedule(function()
+				vim.notify(
+					string.format("Pull failed for %s: all %d items invalid", plugin.description or plugin_name, #items),
+					vim.log.levels.ERROR
+				)
+			end)
+			return
+		end
+
+		-- Write to sync file
+		write_sync_file(valid_items, plugin_name, plugin_config, stats)
+
+		-- Clear syncing flag
 		plugin._is_syncing = false
-		vim.notify(
-			string.format("Sync failed for %s: %s", plugin.description or plugin_name, tostring(result)),
-			vim.log.levels.ERROR
-		)
-		return
-	end
 
-	if not result then
-		-- sync() returned nil (with optional error message)
-		plugin._is_syncing = false
-		vim.notify(
-			string.format("Sync failed for %s: %s", plugin.description or plugin_name, tostring(err or "no data")),
-			vim.log.levels.ERROR
-		)
-		return
-	end
-
-	-- Extract items and stats
-	local items = result.items or result.events or {} -- Support both "items" and legacy "events"
-	local stats = result.stats or {}
-
-	if #items == 0 then
-		plugin._is_syncing = false
-		vim.notify(
-			string.format("Sync completed for %s: no items returned", plugin.description or plugin_name),
-			vim.log.levels.WARN
-		)
-		return
-	end
-
-	-- Validate and filter items
-	local valid_items = vim.tbl_filter(function(item)
-		local valid = validate_item(item, plugin_name)
-		return valid
-	end, items)
-
-	if #valid_items == 0 then
-		plugin._is_syncing = false
-		vim.notify(
-			string.format("Sync failed for %s: all %d items invalid", plugin.description or plugin_name, #items),
-			vim.log.levels.ERROR
-		)
-		return
-	end
-
-	-- Write to sync file
-	write_sync_file(valid_items, plugin_name, plugin_config, stats)
-
-	-- Clear syncing flag
-	plugin._is_syncing = false
-
-	-- Success notification
-	local count = stats.count or #valid_items
-	local msg = string.format("Synced %d items from %s", count, plugin.description or plugin_name)
-	local invalid_count = #items - #valid_items
-	if invalid_count > 0 then
-		msg = msg .. string.format(" (%d skipped)", invalid_count)
-	end
-	vim.notify(msg, vim.log.levels.INFO)
+		-- Success notification
+		local count = stats.count or #valid_items
+		local msg = string.format("Synced %d items from %s", count, plugin.description or plugin_name)
+		local invalid_count = #items - #valid_items
+		if invalid_count > 0 then
+			msg = msg .. string.format(" (%d skipped)", invalid_count)
+		end
+		vim.schedule(function()
+			vim.notify(msg, vim.log.levels.INFO)
+		end)
+	end)
 end
 
 --- Sync all enabled plugins
@@ -547,6 +612,85 @@ function M.stop_auto_sync()
 		timer:stop()
 		timer:close()
 		auto_sync_timers[plugin_name] = nil
+	end
+end
+
+-- =========================================================================
+-- ASYNC PULL (for startup)
+-- =========================================================================
+
+--- Pull all enabled plugins in background after startup
+--- Runs silently - failures don't show notifications. If network is slow/unavailable,
+--- the pull will complete in background without blocking the UI.
+function M.pull_all_async()
+	-- Collect enabled plugins
+	local plugins_to_pull = {}
+	for plugin_name, plugin in pairs(M.plugins) do
+		local plugin_config = config.sync.plugins[plugin_name]
+		if plugin_config and plugin_config.enabled then
+			table.insert(plugins_to_pull, plugin_name)
+		end
+	end
+
+	if #plugins_to_pull == 0 then
+		return
+	end
+
+	-- Pull each plugin in background (scheduled to not block UI)
+	for _, plugin_name in ipairs(plugins_to_pull) do
+		vim.schedule(function()
+			local plugin = M.plugins[plugin_name]
+			local plugin_config = config.sync.plugins[plugin_name]
+
+			if not plugin or not plugin_config then
+				return
+			end
+
+			-- Set syncing flag
+			plugin._is_syncing = true
+
+			-- Run plugin pull in async context (allows plugins to use execute_command with auto-await)
+			-- All errors are caught silently (this is a background operation)
+			async.run(function()
+				-- Wrap everything in pcall to catch errors from awaited promises
+				local success, result = pcall(function()
+					return plugin.pull()
+				end)
+
+				if not success then
+					-- Error occurred (could be network timeout, command failure, etc.) - silent
+					plugin._is_syncing = false
+					return
+				end
+
+				if not result then
+					-- pull() returned nil - silent
+					plugin._is_syncing = false
+					return
+				end
+
+				-- Extract items and stats
+				local items = result.items or result.events or {}
+				local stats = result.stats or {}
+
+				if #items == 0 then
+					plugin._is_syncing = false
+					return
+				end
+
+				-- Validate and filter items
+				local valid_items = vim.tbl_filter(function(item)
+					return validate_item(item, plugin_name)
+				end, items)
+
+				if #valid_items > 0 then
+					-- Write to sync file (silent)
+					write_sync_file(valid_items, plugin_name, plugin_config, stats)
+				end
+
+				plugin._is_syncing = false
+			end)
+		end)
 	end
 end
 

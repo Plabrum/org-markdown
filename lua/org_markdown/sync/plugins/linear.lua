@@ -25,22 +25,6 @@ local M = {
 }
 
 -- =========================================================================
--- SETUP & VALIDATION
--- =========================================================================
-
-function M.setup(plugin_config)
-	-- Resolve secrets from config (supports env:, cmd:, file: prefixes)
-	plugin_config.api_key = secrets.resolve(plugin_config.api_key)
-
-	-- Validate API key
-	if not plugin_config.api_key or plugin_config.api_key == "" then
-		vim.notify("Linear sync requires an API key. Set config.sync.plugins.linear.api_key", vim.log.levels.WARN)
-		return false
-	end
-	return true
-end
-
--- =========================================================================
 -- STATE MAPPING
 -- =========================================================================
 
@@ -122,6 +106,8 @@ end
 --- @param query string GraphQL query
 --- @return table|nil, string|nil Response data, error message
 local function execute_graphql_query(api_key, query)
+	local manager = require("org_markdown.sync.manager")
+
 	-- Build curl command
 	local escaped_query = query:gsub('"', '\\"'):gsub("\n", "")
 	local json_payload = string.format('{"query":"%s"}', escaped_query)
@@ -132,11 +118,15 @@ local function execute_graphql_query(api_key, query)
 		vim.fn.shellescape(json_payload)
 	)
 
-	local output = vim.fn.system(cmd)
+	-- Execute async (auto-awaits in coroutine context)
+	local output_lines, err = manager.execute_command(cmd)
 
-	if vim.v.shell_error ~= 0 then
-		return nil, "Linear API request failed (HTTP error: " .. vim.v.shell_error .. ")"
+	if not output_lines then
+		return nil, "Linear API request failed: " .. (err or "Unknown error")
 	end
+
+	-- Join lines into single string for JSON parsing
+	local output = table.concat(output_lines, "\n")
 
 	-- Parse JSON response
 	local ok, response = pcall(vim.fn.json_decode, output)
@@ -331,20 +321,28 @@ local function cycle_to_item(cycle)
 end
 
 -- =========================================================================
--- MAIN SYNC FUNCTION
+-- MAIN PULL FUNCTION
 -- =========================================================================
 
-function M.sync()
+function M.pull()
 	local plugin_config = config.sync.plugins.linear
 	if not plugin_config or not plugin_config.enabled then
 		return nil, "Linear sync is disabled"
+	end
+
+	-- Resolve secrets from config (supports env:, cmd:, file: prefixes)
+	local api_key = secrets.resolve(plugin_config.api_key)
+
+	-- Validate API key
+	if not api_key or api_key == "" then
+		return nil, "Linear sync requires an API key. Set config.sync.plugins.linear.api_key"
 	end
 
 	local items = {}
 
 	-- Fetch assigned issues
 	if plugin_config.include_assigned then
-		local issues, err = fetch_assigned_issues(plugin_config.api_key, plugin_config.team_ids or {})
+		local issues, err = fetch_assigned_issues(api_key, plugin_config.team_ids or {})
 		if not issues then
 			return nil, err
 		end
@@ -356,7 +354,7 @@ function M.sync()
 
 	-- Fetch cycles
 	if plugin_config.include_cycles then
-		local cycles, err = fetch_cycles(plugin_config.api_key, plugin_config.team_ids or {})
+		local cycles, err = fetch_cycles(api_key, plugin_config.team_ids or {})
 		if not cycles then
 			return nil, err
 		end
