@@ -133,6 +133,39 @@ local function parse_macos_date(date_str)
 	return result
 end
 
+--- Split pipe-delimited string respecting escaped pipes (\|)
+--- @param line string Pipe-delimited string with escaped pipes
+--- @return table Parts with unescaped pipes
+local function split_escaped_pipes(line)
+	local parts = {}
+	local current = ""
+	local i = 1
+
+	while i <= #line do
+		local char = line:sub(i, i)
+
+		if char == "\\" and i < #line and line:sub(i + 1, i + 1) == "|" then
+			-- Escaped pipe - add the pipe to current part and skip the backslash
+			current = current .. "|"
+			i = i + 2
+		elseif char == "|" then
+			-- Unescaped pipe - split here
+			table.insert(parts, current)
+			current = ""
+			i = i + 1
+		else
+			-- Regular character
+			current = current .. char
+			i = i + 1
+		end
+	end
+
+	-- Add the last part
+	table.insert(parts, current)
+
+	return parts
+end
+
 --- Parse AppleScript output into events
 --- @param output table Lines from AppleScript
 --- @return table events Array of parsed events
@@ -142,18 +175,19 @@ local function parse_applescript_output(output)
 	for _, line in ipairs(output) do
 		if line ~= "" then
 			-- Format: CALENDAR|TITLE|START|END|ALLDAY|LOCATION|URL|NOTES|UID
-			local parts = vim.split(line, "|", { plain = true })
+			-- Use custom split to handle escaped pipes in titles/locations/notes
+			local parts = split_escaped_pipes(line)
 			if #parts >= 5 then
 				local calendar = parts[1]
-				local title = parts[2]:gsub("\\|", "|") -- Unescape pipes
+				local title = parts[2]
 				local start_raw = parts[3]
 				local end_raw = parts[4]
 				local all_day_str = parts[5]
 
 				-- Extended fields (may not be present in older output)
-				local location = parts[6] and parts[6] ~= "" and parts[6]:gsub("\\|", "|") or nil
+				local location = parts[6] and parts[6] ~= "" and parts[6] or nil
 				local url = parts[7] and parts[7] ~= "" and parts[7] or nil
-				local notes = parts[8] and parts[8] ~= "" and parts[8]:gsub("\\|", "|") or nil
+				local notes = parts[8] and parts[8] ~= "" and parts[8] or nil
 				local uid = parts[9] and parts[9] ~= "" and parts[9] or nil
 
 				local start_date = parse_macos_date(start_raw)

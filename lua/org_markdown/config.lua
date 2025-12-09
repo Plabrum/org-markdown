@@ -1,7 +1,7 @@
 local M = {
 	captures = {
 		window_method = "horizontal",
-		default_template = "todo",
+		default_template = "Task",
 
 		-- Author name for %n template marker
 		-- Defaults to git config user.name, then $USER if not set
