@@ -1,0 +1,308 @@
+local M = {}
+
+-- Heading pattern: matches markdown headings like # Heading, ## Heading, etc.
+local HEADING_PATTERN = "^(#+)%s+"
+
+-- Helper: Check if a line is a heading
+-- @param lnum number: Line number (1-indexed)
+-- @param bufnr number|nil: Buffer number (defaults to current buffer)
+-- @return boolean: true if line is a heading
+function M.is_heading_line(lnum, bufnr)
+	bufnr = bufnr or vim.api.nvim_get_current_buf()
+	local lines = vim.api.nvim_buf_get_lines(bufnr, lnum - 1, lnum, false)
+	if #lines == 0 then
+		return false
+	end
+	local line = lines[1]
+	return line:match(HEADING_PATTERN) ~= nil
+end
+
+-- Helper: Get heading level from a line
+-- @param line string: The line text
+-- @return number|nil: Number of # characters, or nil if not a heading
+function M.get_heading_level(line)
+	local hashes = line:match(HEADING_PATTERN)
+	if hashes then
+		return #hashes
+	end
+	return nil
+end
+
+-- Fold expression: Calculate fold level for a line
+-- This is called by Neovim for every line when foldmethod='expr'
+-- Must be fast - no file I/O or expensive operations
+-- @param lnum number: Line number (1-indexed)
+-- @return string: Fold level indicator (">N" for headings, "=" for content)
+function M.get_fold_level(lnum)
+	local line = vim.fn.getline(lnum)
+	local level = M.get_heading_level(line)
+
+	if level then
+		-- Return ">N" to start a fold at level N
+		return ">" .. level
+	else
+		-- Return "=" to inherit fold level from previous line
+		return "="
+	end
+end
+
+-- Helper: Get fold state for a heading
+-- @param bufnr number: Buffer number
+-- @param lnum number: Line number
+-- @return string|nil: Fold state ("folded"|"children"|"subtree"|"expanded"), or nil
+function M.get_fold_state(bufnr, lnum)
+	local states = vim.b[bufnr].org_markdown_fold_states
+	if not states then
+		return nil
+	end
+	return states[lnum]
+end
+
+-- Helper: Set fold state for a heading
+-- @param bufnr number: Buffer number
+-- @param lnum number: Line number
+-- @param state string: Fold state ("folded"|"children"|"subtree"|"expanded")
+function M.set_fold_state(bufnr, lnum, state)
+	-- Get the states table, modify it, and set it back
+	-- (vim.b accessor doesn't support direct nested modifications)
+	local states = vim.b[bufnr].org_markdown_fold_states or {}
+	states[lnum] = state
+	vim.b[bufnr].org_markdown_fold_states = states
+end
+
+-- Helper: Find all child headings of a given heading
+-- @param bufnr number: Buffer number
+-- @param start_lnum number: Line number of parent heading
+-- @param parent_level number: Level of parent heading
+-- @return table: Array of {lnum, level} for child headings
+local function find_child_headings(bufnr, start_lnum, parent_level)
+	local children = {}
+	local line_count = vim.api.nvim_buf_line_count(bufnr)
+
+	for lnum = start_lnum + 1, line_count do
+		local line = vim.fn.getline(lnum)
+		local level = M.get_heading_level(line)
+
+		if level then
+			if level <= parent_level then
+				-- Reached same or higher level heading - stop
+				break
+			elseif level == parent_level + 1 then
+				-- Direct child
+				table.insert(children, { lnum = lnum, level = level })
+			end
+			-- Skip deeper descendants (they'll be handled recursively)
+		end
+	end
+
+	return children
+end
+
+-- Helper: Find end line of a heading's subtree
+-- @param bufnr number: Buffer number
+-- @param start_lnum number: Line number of heading
+-- @param heading_level number: Level of heading
+-- @return number: Last line number of subtree
+local function find_subtree_end(bufnr, start_lnum, heading_level)
+	local line_count = vim.api.nvim_buf_line_count(bufnr)
+
+	for lnum = start_lnum + 1, line_count do
+		local line = vim.fn.getline(lnum)
+		local level = M.get_heading_level(line)
+
+		if level and level <= heading_level then
+			-- Reached same or higher level heading - previous line is the end
+			return lnum - 1
+		end
+	end
+
+	-- No higher-level heading found - subtree extends to end of file
+	return line_count
+end
+
+-- Cycle fold state for heading under cursor
+-- Cycles: folded → children → subtree → expanded → folded
+-- @return boolean: true if cursor was on a heading and fold was cycled
+function M.cycle_heading_fold()
+	local bufnr = vim.api.nvim_get_current_buf()
+	local cursor = vim.api.nvim_win_get_cursor(0)
+	local lnum = cursor[1]
+
+	-- Check if cursor is on a heading
+	if not M.is_heading_line(lnum) then
+		return false
+	end
+
+	local line = vim.fn.getline(lnum)
+	local heading_level = M.get_heading_level(line)
+	if not heading_level then
+		return false
+	end
+
+	-- Get current state (default to "expanded" if not tracked)
+	local current_state = M.get_fold_state(bufnr, lnum) or "expanded"
+
+	-- Cycle to next state
+	local next_state
+	if current_state == "expanded" then
+		next_state = "folded"
+	elseif current_state == "folded" then
+		next_state = "children"
+	elseif current_state == "children" then
+		next_state = "subtree"
+	else -- subtree
+		next_state = "expanded"
+	end
+
+	-- Apply the fold state
+	if next_state == "folded" then
+		-- Close the fold at cursor
+		vim.cmd("normal! zc")
+	elseif next_state == "children" then
+		-- Open this fold, close all child folds
+		vim.cmd("normal! zo")
+
+		-- Find and close all direct children
+		local children = find_child_headings(bufnr, lnum, heading_level)
+		for _, child in ipairs(children) do
+			-- Move to child heading and close it
+			vim.api.nvim_win_set_cursor(0, { child.lnum, 0 })
+			vim.cmd("normal! zc")
+		end
+
+		-- Return cursor to original heading
+		vim.api.nvim_win_set_cursor(0, cursor)
+	elseif next_state == "subtree" then
+		-- Open all folds in entire subtree
+		local subtree_end = find_subtree_end(bufnr, lnum, heading_level)
+
+		-- Open this fold
+		vim.cmd("normal! zo")
+
+		-- Open all folds in the subtree range
+		for i = lnum + 1, subtree_end do
+			if M.is_heading_line(i) then
+				vim.api.nvim_win_set_cursor(0, { i, 0 })
+				vim.cmd("normal! zo")
+			end
+		end
+
+		-- Return cursor to original heading
+		vim.api.nvim_win_set_cursor(0, cursor)
+	else -- expanded
+		-- Open all folds in entire subtree (same as subtree state)
+		local subtree_end = find_subtree_end(bufnr, lnum, heading_level)
+
+		-- Open this fold
+		vim.cmd("normal! zo")
+
+		-- Open all folds in the subtree range
+		for i = lnum + 1, subtree_end do
+			if M.is_heading_line(i) then
+				vim.api.nvim_win_set_cursor(0, { i, 0 })
+				vim.cmd("normal! zo")
+			end
+		end
+
+		-- Return cursor to original heading
+		vim.api.nvim_win_set_cursor(0, cursor)
+	end
+
+	-- Update state tracking
+	M.set_fold_state(bufnr, lnum, next_state)
+
+	return true
+end
+
+-- Cycle global fold level for entire buffer
+-- Cycles: level 0 (all folded) → level 1 → level 2 → ... → level 99 (all expanded) → level 0
+function M.cycle_global_fold()
+	local bufnr = vim.api.nvim_get_current_buf()
+
+	-- Get current global fold level (default to 99 if not tracked)
+	local current_level = vim.b[bufnr].org_markdown_global_fold_level or 99
+
+	-- Find max heading level in buffer to determine cycle range
+	local max_level = 0
+	local line_count = vim.api.nvim_buf_line_count(bufnr)
+	for lnum = 1, line_count do
+		local line = vim.fn.getline(lnum)
+		local level = M.get_heading_level(line)
+		if level and level > max_level then
+			max_level = level
+		end
+	end
+
+	-- If no headings, do nothing
+	if max_level == 0 then
+		return
+	end
+
+	-- Cycle to next level
+	local next_level
+	if current_level >= max_level then
+		-- All expanded, go back to all folded
+		next_level = 0
+	else
+		-- Go to next level
+		next_level = current_level + 1
+	end
+
+	-- Apply the fold level
+	vim.opt_local.foldlevel = next_level
+
+	-- Update state tracking
+	vim.b[bufnr].org_markdown_global_fold_level = next_level
+
+	-- Clear per-heading states since we're in global mode now
+	vim.b[bufnr].org_markdown_fold_states = {}
+end
+
+-- Setup folding for a buffer
+-- @param bufnr number: Buffer number
+function M.setup_buffer_folding(bufnr)
+	bufnr = bufnr or vim.api.nvim_get_current_buf()
+
+	-- Find a window displaying this buffer (or use current window if it's the buffer)
+	local winid = vim.fn.bufwinid(bufnr)
+	if winid == -1 then
+		-- Buffer not displayed in any window, can't set fold options
+		-- Just initialize state and return
+		vim.b[bufnr].org_markdown_fold_states = {}
+		return
+	end
+
+	-- Set fold method to expression (window-local)
+	vim.wo[winid].foldmethod = "expr"
+
+	-- Set fold expression to our function (window-local)
+	vim.wo[winid].foldexpr = 'v:lua.require("org_markdown.folding").get_fold_level(v:lnum)'
+
+	-- Initialize state tracking (buffer-local)
+	vim.b[bufnr].org_markdown_fold_states = {}
+
+	-- Set initial fold level based on config
+	local config = require("org_markdown.config")
+	local folding_config = config.folding or {}
+
+	if folding_config.auto_fold_on_open then
+		-- Start with all headings folded
+		vim.wo[winid].foldlevel = 0
+		vim.b[bufnr].org_markdown_global_fold_level = 0
+	else
+		-- Start with all headings expanded
+		vim.wo[winid].foldlevel = 99
+		vim.b[bufnr].org_markdown_global_fold_level = 99
+	end
+
+	-- Set up autocmd to clean up state on buffer unload
+	vim.api.nvim_create_autocmd("BufUnload", {
+		buffer = bufnr,
+		callback = function()
+			vim.b[bufnr].org_markdown_fold_states = nil
+			vim.b[bufnr].org_markdown_global_fold_level = nil
+		end,
+	})
+end
+
+return M

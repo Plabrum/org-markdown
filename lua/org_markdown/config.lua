@@ -119,6 +119,12 @@ local M = {
 		IN_PROGRESS = "yellow",
 		DONE = "green",
 	},
+	folding = {
+		enabled = true, -- Enable folding features
+		auto_fold_on_open = true, -- Fold all headings when file opens
+		fold_on_tab = true, -- Use Tab for heading fold cycling
+		global_fold_on_shift_tab = true, -- Use Shift-Tab for global fold cycling
+	},
 	notifications = {
 		enabled = true,
 		intervals = { 10, 2 },

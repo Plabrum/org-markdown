@@ -126,12 +126,28 @@ function M.setup_editing_keybinds(bufnr)
 		end
 	end, { desc = "org-markdown: cycle or enter", buffer = bufnr })
 
-	-- NORMAL: <Tab> cycles checkbox/status
-	-- vim.keymap.set("n", "<Tab>", function()
-	-- 	M.edit_line_at_cursor(function(line)
-	-- 		return M.cycle_checkbox_inline(line, config.checkbox_states) or M.cycle_status_inline(line, config.status_states)
-	-- 	end)
-	-- end, { desc = "org-markdown: cycle todo state", buffer = bufnr })
+	-- NORMAL: <Tab> cycles heading folds if enabled, else cycles checkbox/status
+	local folding_config = config.folding or {}
+	if folding_config.enabled and folding_config.fold_on_tab then
+		vim.keymap.set("n", "<Tab>", function()
+			local folding = require("org_markdown.folding")
+			local did_fold = folding.cycle_heading_fold()
+			if not did_fold then
+				-- Fallback to checkbox/status cycling
+				M.edit_line_at_cursor(function(line)
+					return M.cycle_checkbox_inline(line, config.checkbox_states) or M.cycle_status_inline(line, config.status_states)
+				end)
+			end
+		end, { desc = "org-markdown: cycle fold or todo state", buffer = bufnr })
+	end
+
+	-- NORMAL: <S-Tab> cycles global fold level
+	if folding_config.enabled and folding_config.global_fold_on_shift_tab then
+		vim.keymap.set("n", "<S-Tab>", function()
+			local folding = require("org_markdown.folding")
+			folding.cycle_global_fold()
+		end, { desc = "org-markdown: cycle global fold level", buffer = bufnr })
+	end
 
 	-- INSERT: <CR> continues todos, else default <CR>
 	vim.keymap.set("i", "<CR>", function()

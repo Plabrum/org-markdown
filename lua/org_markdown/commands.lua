@@ -90,6 +90,13 @@ function M.register()
 			-- if vim.bo[args.buf].buftype ~= "" then return end
 			editing.setup_editing_keybinds(args.buf)
 			syntax.setup_buffer_syntax(args.buf)
+
+			-- Setup folding if enabled
+			local folding_config = config.folding or {}
+			if folding_config.enabled then
+				local folding = require("org_markdown.folding")
+				folding.setup_buffer_folding(args.buf)
+			end
 		end,
 	})
 
