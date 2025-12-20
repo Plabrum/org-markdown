@@ -50,6 +50,10 @@ function M.setup(opts)
 
 	-- Setup auto-sync for enabled plugins
 	-- sync_manager.setup_auto_sync()
+
+	-- Setup notifications (auto-start after config is loaded)
+	local notifications = require("org_markdown.notifications")
+	notifications.start()
 end
 
 return M

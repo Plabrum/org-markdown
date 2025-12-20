@@ -119,6 +119,15 @@ local M = {
 		IN_PROGRESS = "yellow",
 		DONE = "green",
 	},
+	notifications = {
+		enabled = true,
+		intervals = { 10, 2 },
+		cache_refresh_interval = 300,
+		auto_refresh_on_save = false,
+		max_lookahead_days = 7,
+		notification_format = "%s in %d minutes",
+		notification_level = vim.log.levels.INFO,
+	},
 
 	-- TODO PAL: Implement front matter automations
 	-- automation = {

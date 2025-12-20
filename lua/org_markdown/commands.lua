@@ -147,5 +147,21 @@ function M.register()
 			silent = true,
 		})
 	end
+
+	-- Notification commands
+	vim.api.nvim_create_user_command("MarkdownNotificationsRefresh", function()
+		require("org_markdown.notifications").refresh_cache()
+		vim.notify("Notification cache refreshed", vim.log.levels.INFO)
+	end, { desc = "OrgMarkdown: Refresh notification cache" })
+
+	vim.api.nvim_create_user_command("MarkdownNotificationsStop", function()
+		require("org_markdown.notifications").stop()
+		vim.notify("Notifications stopped", vim.log.levels.INFO)
+	end, { desc = "OrgMarkdown: Stop notifications" })
+
+	vim.api.nvim_create_user_command("MarkdownNotificationsStart", function()
+		require("org_markdown.notifications").start()
+		vim.notify("Notifications started", vim.log.levels.INFO)
+	end, { desc = "OrgMarkdown: Start notifications" })
 end
 return M
