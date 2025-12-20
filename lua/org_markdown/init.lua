@@ -54,6 +54,13 @@ function M.setup(opts)
 	-- Setup notifications (auto-start after config is loaded)
 	local notifications = require("org_markdown.notifications")
 	notifications.start()
+
+	-- Setup auto-archive if enabled
+	local config = require("org_markdown.config")
+	if config.archive and config.archive.enabled and config.archive.auto_archive then
+		local archive = require("org_markdown.archive")
+		archive.start_auto_archive()
+	end
 end
 
 return M

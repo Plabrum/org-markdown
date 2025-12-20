@@ -49,13 +49,24 @@ function M.cycle_status_inline(line, states)
 
 	local next_state = states[(index % #states) + 1]
 
+	-- Check if transitioning TO DONE state
+	local archive = require("org_markdown.archive")
+	local should_timestamp = (next_state == "DONE" and current ~= "DONE")
+
 	-- Preserve spacing: if rest starts with content, add a space; otherwise keep as-is
 	local new_rest = rest
 	if rest and rest ~= "" and not rest:match("^%s") then
 		new_rest = " " .. rest
 	end
 
-	return { string.format("%s %s%s", hashes, next_state, new_rest) }
+	local new_line = string.format("%s %s%s", hashes, next_state, new_rest)
+
+	-- Add timestamp if cycling TO DONE
+	if should_timestamp and archive.is_enabled() then
+		new_line = archive.add_completed_timestamp(new_line)
+	end
+
+	return { new_line }
 end
 
 function M.continue_todo(line)

@@ -170,5 +170,21 @@ function M.register()
 		require("org_markdown.notifications").start()
 		vim.notify("Notifications started", vim.log.levels.INFO)
 	end, { desc = "OrgMarkdown: Start notifications" })
+
+	-- Archive commands
+	vim.api.nvim_create_user_command("MarkdownArchiveNow", function()
+		require("org_markdown.archive").archive_all_eligible()
+	end, { desc = "OrgMarkdown: Archive old DONE headings now" })
+
+	vim.api.nvim_create_user_command("MarkdownArchiveStart", function()
+		local archive = require("org_markdown.archive")
+		archive.start_auto_archive()
+	end, { desc = "OrgMarkdown: Start auto-archive timer" })
+
+	vim.api.nvim_create_user_command("MarkdownArchiveStop", function()
+		local archive = require("org_markdown.archive")
+		archive.stop_auto_archive()
+		vim.notify("Auto-archive stopped", vim.log.levels.INFO)
+	end, { desc = "OrgMarkdown: Stop auto-archive timer" })
 end
 return M

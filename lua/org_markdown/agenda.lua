@@ -695,4 +695,10 @@ function M.show_tabbed_agenda()
 	end
 end
 
+-- Public API: Expose scan_files for use by notifications module
+-- Returns { tasks = [], calendar = [], all = [] }
+function M.scan_files(file_patterns)
+	return scan_files(file_patterns)
+end
+
 return M
