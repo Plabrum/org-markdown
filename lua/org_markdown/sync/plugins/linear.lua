@@ -13,10 +13,49 @@ local M = {
 		api_key = "", -- Required: Linear API key (get from https://linear.app/settings/api)
 		include_assigned = true,
 		include_cycles = false,
-		team_ids = {}, -- Empty = all teams
+		team_ids = {}, -- Team keys (e.g., {"IF", "ENG"}) - Empty = all teams
 		heading_level = 2,
 		auto_sync = false,
 		auto_sync_interval = 3600, -- 1 hour
+
+		-- Status mapping: Linear state name → org-markdown status
+		-- Multiple Linear states can map to the same org-markdown status
+		-- Linear state names are matched case-insensitively using pattern matching
+		status_mapping = {
+			-- TODO states
+			{ pattern = "backlog", status = "TODO" },
+			{ pattern = "todo", status = "TODO" },
+			{ pattern = "triage", status = "TODO" },
+
+			-- IN_PROGRESS states
+			{ pattern = "in progress", status = "IN_PROGRESS" },
+			{ pattern = "in review", status = "IN_PROGRESS" },
+			{ pattern = "started", status = "IN_PROGRESS" },
+			{ pattern = "in development", status = "IN_PROGRESS" },
+
+			-- DONE states
+			{ pattern = "done", status = "DONE" },
+			{ pattern = "completed", status = "DONE" },
+
+			-- CANCELLED states
+			{ pattern = "cancel", status = "CANCELLED" },
+			{ pattern = "duplicate", status = "CANCELLED" },
+
+			-- BLOCKED/WAITING states
+			{ pattern = "block", status = "BLOCKED" },
+			{ pattern = "waiting", status = "WAITING" },
+		},
+
+		-- Reverse mapping for push (org-markdown → Linear state name)
+		-- Used when syncing changes back to Linear
+		reverse_status_mapping = {
+			TODO = "Todo",
+			IN_PROGRESS = "In Progress",
+			DONE = "Done",
+			CANCELLED = "Canceled",
+			BLOCKED = "Blocked",
+			WAITING = "Waiting",
+		},
 	},
 
 	supports_auto_sync = true,
@@ -28,7 +67,7 @@ local M = {
 -- STATE MAPPING
 -- =========================================================================
 
---- Map Linear state to org-markdown status
+--- Map Linear state to org-markdown status using configured mappings
 --- @param state_name string Linear state name
 --- @return string|nil Org-markdown status
 local function map_linear_state(state_name)
@@ -37,20 +76,35 @@ local function map_linear_state(state_name)
 	end
 
 	local lower_state = state_name:lower()
+	local plugin_config = config.sync.plugins.linear
 
-	-- Map common Linear states to org-markdown states
-	if lower_state:match("backlog") or lower_state:match("todo") or lower_state:match("triage") then
-		return "TODO"
-	elseif lower_state:match("in progress") or lower_state:match("started") or lower_state:match("in development") then
-		return "IN_PROGRESS"
-	elseif lower_state:match("done") or lower_state:match("completed") then
-		return "DONE"
-	elseif lower_state:match("cancel") then
-		return "CANCELLED"
-	else
-		-- Default to TODO for unknown states
-		return "TODO"
+	-- Try to match against configured patterns
+	if plugin_config and plugin_config.status_mapping then
+		for _, mapping in ipairs(plugin_config.status_mapping) do
+			if lower_state:match(mapping.pattern:lower()) then
+				return mapping.status
+			end
+		end
 	end
+
+	-- Default to TODO if no mapping found
+	return "TODO"
+end
+
+--- Map org-markdown status to Linear state name (for future push functionality)
+--- @param status string Org-markdown status
+--- @return string|nil Linear state name
+local function map_status_to_linear(status)
+	if not status then
+		return nil
+	end
+
+	local plugin_config = config.sync.plugins.linear
+	if plugin_config and plugin_config.reverse_status_mapping then
+		return plugin_config.reverse_status_mapping[status]
+	end
+
+	return nil
 end
 
 --- Map Linear priority to org-markdown priority
@@ -108,13 +162,18 @@ end
 local function execute_graphql_query(api_key, query)
 	local manager = require("org_markdown.sync.manager")
 
-	-- Build curl command
-	local escaped_query = query:gsub('"', '\\"'):gsub("\n", "")
+	-- Build curl command - normalize all whitespace and escape quotes
+	local escaped_query = query
+		:gsub("[\r\n\t]+", " ") -- Replace all newlines, returns, tabs with single space
+		:gsub("%s+", " ") -- Collapse multiple spaces to single space
+		:gsub("^%s+", "") -- Trim leading whitespace
+		:gsub("%s+$", "") -- Trim trailing whitespace
+		:gsub('"', '\\"') -- Escape quotes
 	local json_payload = string.format('{"query":"%s"}', escaped_query)
 
 	local cmd = string.format(
-		'curl -s -X POST https://api.linear.app/graphql -H "Content-Type: application/json" -H "Authorization: %s" -d %s',
-		vim.fn.shellescape(api_key),
+		"curl -s -X POST https://api.linear.app/graphql -H 'Content-Type: application/json' -H 'Authorization: %s' -d %s",
+		api_key,
 		vim.fn.shellescape(json_payload)
 	)
 
@@ -147,17 +206,17 @@ end
 
 --- Fetch assigned issues from Linear
 --- @param api_key string Linear API key
---- @param team_ids table List of team IDs (empty = all teams)
+--- @param team_ids table List of team keys (e.g., {"IF", "ENG"}) - empty = all teams
 --- @return table|nil, string|nil Issues array, error message
 local function fetch_assigned_issues(api_key, team_ids)
-	-- Build team filter
+	-- Build team filter (using team keys, not IDs)
 	local team_filter = ""
 	if #team_ids > 0 then
-		local quoted_ids = {}
-		for _, id in ipairs(team_ids) do
-			table.insert(quoted_ids, '"' .. id .. '"')
+		local quoted_keys = {}
+		for _, key in ipairs(team_ids) do
+			table.insert(quoted_keys, '"' .. key .. '"')
 		end
-		team_filter = string.format("team: { id: { in: [%s] } },", table.concat(quoted_ids, ","))
+		team_filter = string.format("team: { key: { in: [%s] } },", table.concat(quoted_keys, ","))
 	end
 
 	local query = string.format(
@@ -193,17 +252,17 @@ end
 
 --- Fetch active cycles from Linear
 --- @param api_key string Linear API key
---- @param team_ids table List of team IDs (empty = all teams)
+--- @param team_ids table List of team keys (e.g., {"IF", "ENG"}) - empty = all teams
 --- @return table|nil, string|nil Cycles array, error message
 local function fetch_cycles(api_key, team_ids)
-	-- Build team filter
+	-- Build team filter (using team keys, not IDs)
 	local team_filter = ""
 	if #team_ids > 0 then
-		local quoted_ids = {}
-		for _, id in ipairs(team_ids) do
-			table.insert(quoted_ids, '"' .. id .. '"')
+		local quoted_keys = {}
+		for _, key in ipairs(team_ids) do
+			table.insert(quoted_keys, '"' .. key .. '"')
 		end
-		team_filter = string.format("team: { id: { in: [%s] } },", table.concat(quoted_ids, ","))
+		team_filter = string.format("team: { key: { in: [%s] } },", table.concat(quoted_keys, ","))
 	end
 
 	local query = string.format(
@@ -236,6 +295,13 @@ end
 -- ITEM CONVERSION
 -- =========================================================================
 
+--- Check if value is nil or vim.NIL (JSON null)
+--- @param value any Value to check
+--- @return boolean True if nil or vim.NIL
+local function is_null(value)
+	return value == nil or value == vim.NIL
+end
+
 --- Convert Linear issue to item format
 --- @param issue table Linear issue object
 --- @return table Item
@@ -245,19 +311,19 @@ local function issue_to_item(issue)
 
 	-- Add metadata section
 	local metadata = {}
-	if issue.assignee and issue.assignee.name then
+	if not is_null(issue.assignee) and issue.assignee.name then
 		table.insert(metadata, "**Assignee:** " .. issue.assignee.name)
 	end
-	if issue.project and issue.project.name then
+	if not is_null(issue.project) and issue.project.name then
 		table.insert(metadata, "**Project:** " .. issue.project.name)
 	end
-	if issue.state and issue.state.name then
+	if not is_null(issue.state) and issue.state.name then
 		table.insert(metadata, "**State:** " .. issue.state.name)
 	end
-	if issue.url then
+	if not is_null(issue.url) then
 		table.insert(metadata, "**URL:** " .. issue.url)
 	end
-	if issue.identifier then
+	if not is_null(issue.identifier) then
 		table.insert(metadata, "**ID:** `" .. issue.identifier .. "`")
 	end
 
@@ -266,7 +332,7 @@ local function issue_to_item(issue)
 	end
 
 	-- Add description if present
-	if issue.description and issue.description ~= "" then
+	if not is_null(issue.description) and issue.description ~= "" then
 		if #body_parts > 0 then
 			table.insert(body_parts, "")
 		end
@@ -275,20 +341,20 @@ local function issue_to_item(issue)
 
 	local item = {
 		title = issue.title,
-		status = map_linear_state(issue.state and issue.state.name),
+		status = map_linear_state(not is_null(issue.state) and issue.state.name or nil),
 		priority = map_priority(issue.priority),
-		due_date = parse_linear_date(issue.dueDate),
+		due_date = parse_linear_date(not is_null(issue.dueDate) and issue.dueDate or nil),
 		tags = {},
 		body = #body_parts > 0 and table.concat(body_parts, "\n") or nil,
 	}
 
 	-- Add team tag
-	if issue.team then
+	if not is_null(issue.team) then
 		table.insert(item.tags, issue.team.key)
 	end
 
 	-- Add project tag if present
-	if issue.project then
+	if not is_null(issue.project) then
 		table.insert(item.tags, issue.project.name:gsub("%s+", "-"):lower())
 	end
 
@@ -301,17 +367,17 @@ end
 local function cycle_to_item(cycle)
 	-- Build body with metadata
 	local metadata = {}
-	if cycle.team and cycle.team.name then
+	if not is_null(cycle.team) and cycle.team.name then
 		table.insert(metadata, "**Team:** " .. cycle.team.name)
 	end
-	if cycle.id then
+	if not is_null(cycle.id) then
 		table.insert(metadata, "**ID:** `" .. cycle.id .. "`")
 	end
 
 	local item = {
 		title = string.format("[%s] %s", cycle.team.key, cycle.name),
-		start_date = parse_linear_date(cycle.startsAt and cycle.startsAt:match("^[^T]+")),
-		end_date = parse_linear_date(cycle.endsAt and cycle.endsAt:match("^[^T]+")),
+		start_date = parse_linear_date(not is_null(cycle.startsAt) and cycle.startsAt:match("^[^T]+") or nil),
+		end_date = parse_linear_date(not is_null(cycle.endsAt) and cycle.endsAt:match("^[^T]+") or nil),
 		all_day = true,
 		tags = { "cycle", cycle.team.key },
 		body = #metadata > 0 and table.concat(metadata, "  \n") or nil,

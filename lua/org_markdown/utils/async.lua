@@ -96,7 +96,13 @@ end
 
 -- Run a coroutine-based async function
 function async.run(fn)
-	coroutine.wrap(fn)()
+	coroutine.wrap(function()
+		local ok, err = pcall(fn)
+		if not ok then
+			-- Silently ignore errors (they should be handled by the function itself)
+			-- This prevents errors from escaping the coroutine and bubbling up during startup
+		end
+	end)()
 end
 
 return async

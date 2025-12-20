@@ -61,24 +61,30 @@ function M.execute_command(cmd)
 	-- Auto-await if we're in a coroutine context (plugin.pull() is wrapped in async.run)
 	local co = coroutine.running()
 	if co then
-		-- We're in a coroutine - manually handle promise to avoid throwing errors
-		-- Set up callbacks and yield
+		-- We're in a coroutine - manually handle promise without throwing errors
+		-- This is critical for silent background operations
 		local success, result
 		promise
 			:then_(function(val)
 				success = true
 				result = val
-				coroutine.resume(co)
+				-- Resume in next tick to avoid stack overflow
+				vim.schedule(function()
+					coroutine.resume(co)
+				end)
 			end)
 			:catch_(function(e)
 				success = false
 				result = e
-				coroutine.resume(co)
+				-- Resume in next tick to avoid stack overflow
+				vim.schedule(function()
+					coroutine.resume(co)
+				end)
 			end)
 
 		coroutine.yield()
 
-		-- Return result
+		-- Return result (nil + error for failures)
 		if success then
 			return result, nil
 		else
@@ -672,13 +678,19 @@ function M.pull_all_async()
 				end)
 
 				if not success then
-					-- Error occurred (could be network timeout, command failure, etc.) - silent
+					-- Error occurred (could be network timeout, command failure, etc.)
 					plugin._is_syncing = false
+					vim.schedule(function()
+						vim.notify(
+							string.format("Background sync failed for %s: %s", plugin.description or plugin_name, tostring(result)),
+							vim.log.levels.WARN
+						)
+					end)
 					return
 				end
 
 				if not result then
-					-- pull() returned nil - silent
+					-- pull() returned nil
 					plugin._is_syncing = false
 					return
 				end

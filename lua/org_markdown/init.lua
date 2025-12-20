@@ -2,9 +2,8 @@ local M = {}
 
 function M.setup(opts)
 	require("org_markdown.config").setup(opts or {})
-	require("org_markdown.commands").register()
 
-	-- Load sync plugins
+	-- Load sync plugins BEFORE registering commands
 	local sync_manager = require("org_markdown.sync.manager")
 	local config = require("org_markdown.config")
 	local plugin_names = { "calendar", "linear", "sheets" } -- Built-in plugins
@@ -35,6 +34,9 @@ function M.setup(opts)
 			end
 		end
 	end
+
+	-- Register commands AFTER plugins are loaded
+	require("org_markdown.commands").register()
 
 	-- Automatic pull on startup for all enabled plugins
 	-- All sync operations are fully async (non-blocking) using vim.fn.jobstart.
