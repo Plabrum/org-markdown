@@ -4,6 +4,7 @@ local config = require("org_markdown.config")
 local picker = require("org_markdown.utils.picker")
 local async = require("org_markdown.utils.async")
 local frontmatter = require("org_markdown.utils.frontmatter")
+local tree = require("org_markdown.utils.tree")
 
 local M = {}
 
@@ -64,30 +65,13 @@ function M.get_refile_target()
 	end
 
 	-- 2. Heading match
-	local heading_level, heading_text = current:match("^(#+)%s*(.*)")
-	if heading_level then
-		local start_idx = row -- 1-indexed for array access
-		local end_idx = start_idx + 1
-		local current_level = #heading_level
-
-		while end_idx <= #lines do
-			local next_line = lines[end_idx]
-			local next_level = next_line:match("^(#+)")
-			if next_level and #next_level <= current_level then
-				break
-			end
-			end_idx = end_idx + 1
-		end
-
-		local range = {}
-		for i = start_idx, end_idx - 1 do
-			table.insert(range, lines[i])
-		end
-
+	local level = tree.get_level(current)
+	if level then
+		local block_lines = tree.extract_block(lines, row, level)
 		return {
-			lines = range,
-			start_line = start_idx - 1, -- Convert to 0-indexed for nvim_buf_set_lines
-			end_line = end_idx - 1,
+			lines = block_lines,
+			start_line = row - 1, -- Convert to 0-indexed for nvim_buf_set_lines
+			end_line = row + #block_lines - 1,
 		}
 	end
 

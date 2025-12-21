@@ -1,7 +1,5 @@
 local M = {}
-
--- Heading pattern: matches markdown headings like # Heading, ## Heading, etc.
-local HEADING_PATTERN = "^(#+)%s+"
+local tree = require("org_markdown.utils.tree")
 
 -- Helper: Check if a line is a heading
 -- @param lnum number: Line number (1-indexed)
@@ -13,19 +11,14 @@ function M.is_heading_line(lnum, bufnr)
 	if #lines == 0 then
 		return false
 	end
-	local line = lines[1]
-	return line:match(HEADING_PATTERN) ~= nil
+	return tree.is_heading(lines[1])
 end
 
 -- Helper: Get heading level from a line
 -- @param line string: The line text
 -- @return number|nil: Number of # characters, or nil if not a heading
 function M.get_heading_level(line)
-	local hashes = line:match(HEADING_PATTERN)
-	if hashes then
-		return #hashes
-	end
-	return nil
+	return tree.get_level(line)
 end
 
 -- Fold expression: Calculate fold level for a line
@@ -77,26 +70,14 @@ end
 -- @param parent_level number: Level of parent heading
 -- @return table: Array of {lnum, level} for child headings
 local function find_child_headings(bufnr, start_lnum, parent_level)
-	local children = {}
-	local line_count = vim.api.nvim_buf_line_count(bufnr)
-
-	for lnum = start_lnum + 1, line_count do
-		local line = vim.fn.getline(lnum)
-		local level = M.get_heading_level(line)
-
-		if level then
-			if level <= parent_level then
-				-- Reached same or higher level heading - stop
-				break
-			elseif level == parent_level + 1 then
-				-- Direct child
-				table.insert(children, { lnum = lnum, level = level })
-			end
-			-- Skip deeper descendants (they'll be handled recursively)
-		end
+	local lines = vim.api.nvim_buf_get_lines(bufnr, 0, -1, false)
+	local children = tree.find_children(lines, start_lnum, parent_level)
+	-- tree.find_children returns {line, level}, but callers expect {lnum, level}
+	local result = {}
+	for _, child in ipairs(children) do
+		table.insert(result, { lnum = child.line, level = child.level })
 	end
-
-	return children
+	return result
 end
 
 -- Helper: Find end line of a heading's subtree
@@ -105,20 +86,8 @@ end
 -- @param heading_level number: Level of heading
 -- @return number: Last line number of subtree
 local function find_subtree_end(bufnr, start_lnum, heading_level)
-	local line_count = vim.api.nvim_buf_line_count(bufnr)
-
-	for lnum = start_lnum + 1, line_count do
-		local line = vim.fn.getline(lnum)
-		local level = M.get_heading_level(line)
-
-		if level and level <= heading_level then
-			-- Reached same or higher level heading - previous line is the end
-			return lnum - 1
-		end
-	end
-
-	-- No higher-level heading found - subtree extends to end of file
-	return line_count
+	local lines = vim.api.nvim_buf_get_lines(bufnr, 0, -1, false)
+	return tree.find_end(lines, start_lnum, heading_level)
 end
 
 -- Cycle fold state for heading under cursor

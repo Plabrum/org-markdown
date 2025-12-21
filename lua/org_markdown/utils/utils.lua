@@ -1,6 +1,7 @@
 local config = require("org_markdown.config")
 local async = require("org_markdown.utils.async")
 local editing = require("org_markdown.utils.editing")
+local tree = require("org_markdown.utils.tree")
 
 local M = {}
 
@@ -547,23 +548,12 @@ function M.adjust_heading_levels(lines, base_level)
 end
 
 -- Helper: Find heading range (start line, heading level, end line of subtree)
+-- Note: Returns insert_idx as the line AFTER the heading block (for insertion)
 function M.find_heading_range(lines, heading_text)
-	for i, line in ipairs(lines) do
-		local match = line:match("^(#+)%s+" .. vim.pesc(heading_text) .. "%s*$")
-		if match then
-			local base_level = #match
-			local end_index = #lines + 1 -- default: end of file
-
-			for j = i + 1, #lines do
-				local next_heading = lines[j]:match("^(#+)")
-				if next_heading and #next_heading <= base_level then
-					end_index = j
-					break
-				end
-			end
-
-			return i, base_level, end_index
-		end
+	local start_line, level, end_line = tree.find_heading(lines, heading_text)
+	if start_line then
+		-- Return end_line + 1 for insertion point (matches old behavior)
+		return start_line, level, end_line + 1
 	end
 	return nil, nil, nil
 end

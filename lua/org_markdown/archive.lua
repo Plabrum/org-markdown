@@ -3,6 +3,7 @@ local utils = require("org_markdown.utils.utils")
 local parser = require("org_markdown.utils.parser")
 local datetime = require("org_markdown.utils.datetime")
 local queries = require("org_markdown.utils.queries")
+local tree = require("org_markdown.utils.tree")
 
 local M = {}
 local auto_archive_timer = nil
@@ -124,8 +125,7 @@ function M.find_archivable_headings(threshold_days)
 							-- Archive if older than threshold
 							if days_diff >= threshold_days then
 								-- Get heading level
-								local hashes = line:match("^(#+)")
-								local heading_level = hashes and #hashes or 2
+								local heading_level = tree.get_level(line) or 2
 
 								table.insert(archivable, {
 									filepath = filepath,
@@ -152,26 +152,7 @@ end
 --- @param heading_level number Level of the heading
 --- @return number, number Start line, end line (1-indexed, inclusive)
 local function get_heading_block(lines, start_line, heading_level)
-	local end_line = start_line
-
-	-- Find where this heading's content ends
-	for i = start_line + 1, #lines do
-		local line = lines[i]
-		local hashes = line:match("^(#+)%s+")
-
-		if hashes then
-			local level = #hashes
-			-- Stop if we hit a same-level or higher-level heading
-			if level <= heading_level then
-				end_line = i - 1
-				break
-			end
-		end
-
-		end_line = i
-	end
-
-	return start_line, end_line
+	return tree.get_block(lines, start_line, heading_level)
 end
 
 --- Archive a single heading to archive file

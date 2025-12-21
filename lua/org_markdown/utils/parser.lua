@@ -1,5 +1,6 @@
 local M = {}
 local datetime = require("org_markdown.utils.datetime")
+local tree = require("org_markdown.utils.tree")
 
 -- Build valid states from config dynamically
 local function get_valid_states()
@@ -14,7 +15,6 @@ end
 
 -- Pre-defined patterns for single-pass parsing
 local PATTERNS = {
-	heading_prefix = "^(#+)%s+",
 	state = "^([A-Z_]+)%s+",
 	priority = "%[#([A-Z])%]",
 	tracked_date = "<([^>]+)>",
@@ -95,7 +95,7 @@ end
 --- @return table|nil Parsed headline data with priority as just letter (e.g., "A" not "#A")
 function M.parse_headline(line)
 	-- Quick check: is it a heading?
-	if not line:match(PATTERNS.heading_prefix) then
+	if not tree.is_heading(line) then
 		return nil
 	end
 
