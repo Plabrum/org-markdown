@@ -246,7 +246,7 @@ T["sync manager - register plugin"] = function()
 			enabled = true,
 			test_option = "value",
 		},
-		sync = function()
+		pull = function()
 			return {
 				events = {},
 				stats = { count = 0 },
@@ -388,7 +388,7 @@ T["integration - calendar plugin structure"] = function()
 
 	-- Verify plugin has required interface
 	MiniTest.expect.equality(type(calendar.name), "string")
-	MiniTest.expect.equality(type(calendar.sync), "function")
+	MiniTest.expect.equality(type(calendar.pull), "function")
 	MiniTest.expect.equality(type(calendar.default_config), "table")
 
 	-- Verify metadata
