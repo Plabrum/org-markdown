@@ -299,7 +299,14 @@ local function parse_rows(values)
 		end
 
 		-- Only add row if it has at least one value (besides row number)
-		if next(row_obj) ~= nil and (next(row_obj, "_row_number") ~= nil) then
+		local has_data = false
+		for key, _ in pairs(row_obj) do
+			if key ~= "_row_number" then
+				has_data = true
+				break
+			end
+		end
+		if has_data then
 			table.insert(rows, row_obj)
 		end
 	end
@@ -670,63 +677,11 @@ function M.pull()
 		end
 	end
 
-	-- BI-DIRECTIONAL SYNC: Push markdown changes to sheet
-	if plugin_config.bidirectional and not use_api_key then
-		-- Read existing markdown file
-		local md_items = parse_existing_markdown(plugin_config.sync_file)
+	-- BI-DIRECTIONAL SYNC: Disabled during pull (sheets wins)
+	-- Push only happens via explicit M.push() call or auto_push on save
+	-- This ensures pull always overwrites markdown with sheet data
 
-		-- Compare and push changes
-		local push_count = 0
-		for _, md_item in ipairs(md_items) do
-			local row_num = md_item._row_number
-			local sheet_entry = sheet_items_by_row[row_num]
-
-			if sheet_entry then
-				local sheet_item = sheet_entry.item
-				-- Check if markdown item differs from sheet item
-				local changed = false
-				if md_item.status ~= sheet_item.status then
-					changed = true
-				end
-				if md_item.priority ~= sheet_item.priority then
-					changed = true
-				end
-				if md_item.title ~= sheet_item.title then
-					changed = true
-				end
-
-				if changed then
-					-- Push change to sheet (markdown wins)
-					local row_values = item_to_row(md_item, headers, plugin_config.columns, plugin_config.conversions)
-					local success, push_err =
-						update_sheet_row(spreadsheet_id, plugin_config.sheet_name, row_num, row_values, auth_param, quota_project)
-
-					if success then
-						push_count = push_count + 1
-						-- Update the item in the sheet_items array to reflect pushed change
-						-- Keep the original body/tags from sheet, but update status/priority/title
-						sheet_item.status = md_item.status
-						sheet_item.priority = md_item.priority
-						sheet_item.title = md_item.title
-						sheet_items[sheet_entry.index] = sheet_item
-					else
-						vim.notify(string.format("Failed to push row %d: %s", row_num, push_err or "Unknown error"), vim.log.levels.WARN)
-					end
-				end
-			end
-		end
-
-		if push_count > 0 then
-			vim.notify(string.format("Pushed %d changes to Google Sheets", push_count), vim.log.levels.INFO)
-		end
-	elseif plugin_config.bidirectional and use_api_key then
-		vim.notify(
-			"Bi-directional sync requires OAuth (use_gcloud=true), not API key. Falling back to pull-only sync.",
-			vim.log.levels.WARN
-		)
-	end
-
-	-- Return sheet items (now updated with any pushed markdown changes)
+	-- Return sheet items (pull always uses sheet data)
 	return {
 		items = sheet_items,
 		stats = {
