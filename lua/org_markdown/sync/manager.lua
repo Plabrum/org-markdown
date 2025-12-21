@@ -321,9 +321,17 @@ function M.register_plugin(plugin_module)
 	-- Setup auto-push if enabled and plugin supports it
 	local plugin_config = config.sync.plugins[plugin_module.name]
 	if plugin_config.auto_push and type(plugin_module.push) == "function" then
-		local sync_file = vim.fn.expand(plugin_config.sync_file)
+		-- For Linear plugin, watch the staging file if it exists
+		local watch_file
+		if plugin_config.push and plugin_config.push.staging_file then
+			watch_file = vim.fn.expand(plugin_config.push.staging_file)
+		else
+			-- Fallback to sync file for other plugins
+			watch_file = vim.fn.expand(plugin_config.sync_file)
+		end
+
 		vim.api.nvim_create_autocmd("BufWritePost", {
-			pattern = sync_file,
+			pattern = watch_file,
 			callback = function()
 				-- Prevent recursive pushes during sync operations
 				if not plugin_module._is_syncing then
@@ -524,33 +532,13 @@ function M.sync_plugin(plugin_name)
 		local items = result.items or result.events or {} -- Support both "items" and legacy "events"
 		local stats = result.stats or {}
 
-		if #items == 0 then
-			plugin._is_syncing = false
-			vim.schedule(function()
-				vim.notify(
-					string.format("Pull completed for %s: no items returned", plugin.description or plugin_name),
-					vim.log.levels.WARN
-				)
-			end)
-			return
-		end
+		-- Continue even if items is empty (need to clear file for deleted items)
 
 		-- Validate and filter items
 		local valid_items = vim.tbl_filter(function(item)
 			local valid = validate_item(item, plugin_name)
 			return valid
 		end, items)
-
-		if #valid_items == 0 then
-			plugin._is_syncing = false
-			vim.schedule(function()
-				vim.notify(
-					string.format("Pull failed for %s: all %d items invalid", plugin.description or plugin_name, #items),
-					vim.log.levels.ERROR
-				)
-			end)
-			return
-		end
 
 		-- Write to sync file
 		write_sync_file(valid_items, plugin_name, plugin_config, stats)
@@ -560,10 +548,15 @@ function M.sync_plugin(plugin_name)
 
 		-- Success notification
 		local count = stats.count or #valid_items
-		local msg = string.format("Synced %d items from %s", count, plugin.description or plugin_name)
-		local invalid_count = #items - #valid_items
-		if invalid_count > 0 then
-			msg = msg .. string.format(" (%d skipped)", invalid_count)
+		local msg
+		if count == 0 then
+			msg = string.format("Sync completed for %s: file cleared (all items deleted)", plugin.description or plugin_name)
+		else
+			msg = string.format("Synced %d items from %s", count, plugin.description or plugin_name)
+			local invalid_count = #items - #valid_items
+			if invalid_count > 0 then
+				msg = msg .. string.format(" (%d skipped)", invalid_count)
+			end
 		end
 		vim.schedule(function()
 			vim.notify(msg, vim.log.levels.INFO)
@@ -699,20 +692,13 @@ function M.pull_all_async()
 				local items = result.items or result.events or {}
 				local stats = result.stats or {}
 
-				if #items == 0 then
-					plugin._is_syncing = false
-					return
-				end
-
 				-- Validate and filter items
 				local valid_items = vim.tbl_filter(function(item)
 					return validate_item(item, plugin_name)
 				end, items)
 
-				if #valid_items > 0 then
-					-- Write to sync file (silent)
-					write_sync_file(valid_items, plugin_name, plugin_config, stats)
-				end
+				-- Write to sync file (even if empty - clears deleted items)
+				write_sync_file(valid_items, plugin_name, plugin_config, stats)
 
 				plugin._is_syncing = false
 			end)
