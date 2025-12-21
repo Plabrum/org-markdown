@@ -39,6 +39,7 @@ function M.get_fold_level(lnum)
 
 	if level then
 		-- Return ">N" to start a fold at level N
+		-- Each heading starts its own fold
 		return ">" .. level
 	else
 		-- Return "=" to inherit fold level from previous line
@@ -286,21 +287,52 @@ function M.setup_buffer_folding(bufnr)
 	local folding_config = config.folding or {}
 
 	if folding_config.auto_fold_on_open then
-		-- Start with all headings folded
-		vim.wo[winid].foldlevel = 0
-		vim.b[bufnr].org_markdown_global_fold_level = 0
+		-- Find the minimum heading level in the buffer
+		-- This allows us to show all top-level headings while folding their content
+		local min_level = 99
+		local line_count = vim.api.nvim_buf_line_count(bufnr)
+		for lnum = 1, line_count do
+			local line = vim.fn.getline(lnum)
+			local level = M.get_heading_level(line)
+			if level and level < min_level then
+				min_level = level
+			end
+		end
+
+		-- Set foldlevel to show all top-level headings (min_level) but fold their content
+		-- foldlevel = min_level - 1 means headings at min_level are visible but folded
+		local initial_foldlevel = min_level > 1 and (min_level - 1) or 0
+		vim.wo[winid].foldlevel = initial_foldlevel
+		vim.b[bufnr].org_markdown_global_fold_level = initial_foldlevel
 	else
 		-- Start with all headings expanded
 		vim.wo[winid].foldlevel = 99
 		vim.b[bufnr].org_markdown_global_fold_level = 99
 	end
 
-	-- Set up autocmd to clean up state on buffer unload
+	-- Set up autocmds to clean up state and window options
+	local augroup = vim.api.nvim_create_augroup("OrgMarkdownFolding_" .. bufnr, { clear = true })
+
+	-- Clean up buffer-local state on unload
 	vim.api.nvim_create_autocmd("BufUnload", {
+		group = augroup,
 		buffer = bufnr,
 		callback = function()
 			vim.b[bufnr].org_markdown_fold_states = nil
 			vim.b[bufnr].org_markdown_global_fold_level = nil
+		end,
+	})
+
+	-- Reset window-local folding options when leaving markdown buffer
+	vim.api.nvim_create_autocmd("BufWinLeave", {
+		group = augroup,
+		buffer = bufnr,
+		callback = function()
+			local current_winid = vim.api.nvim_get_current_win()
+			-- Reset to Neovim defaults
+			vim.wo[current_winid].foldmethod = "manual"
+			vim.wo[current_winid].foldexpr = "0"
+			vim.wo[current_winid].foldlevel = 0
 		end,
 	})
 end

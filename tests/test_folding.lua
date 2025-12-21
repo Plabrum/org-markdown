@@ -144,6 +144,52 @@ T["get_fold_level - handles nested headings correctly"] = function()
 	cleanup_buffer(bufnr)
 end
 
+T["get_fold_level - handles sibling headings correctly"] = function()
+	local bufnr = create_test_buffer({
+		"## TODO Outline landing page",
+		"",
+		"Content for first task",
+		"",
+		"## TODO Develop User Personas",
+		"",
+		"Content for second task",
+	})
+	vim.api.nvim_set_current_buf(bufnr)
+
+	-- First heading starts a new fold
+	MiniTest.expect.equality(folding.get_fold_level(1), ">2")
+	-- Content inherits fold level
+	MiniTest.expect.equality(folding.get_fold_level(2), "=")
+	MiniTest.expect.equality(folding.get_fold_level(3), "=")
+	-- Second heading at same level also starts a new fold
+	MiniTest.expect.equality(folding.get_fold_level(5), ">2")
+	-- Content under second heading inherits fold level
+	MiniTest.expect.equality(folding.get_fold_level(7), "=")
+
+	cleanup_buffer(bufnr)
+end
+
+T["get_fold_level - handles mixed nesting and siblings"] = function()
+	local bufnr = create_test_buffer({
+		"# Parent 1",
+		"## Child 1a",
+		"Content",
+		"## Child 1b",
+		"# Parent 2",
+		"## Child 2a",
+	})
+	vim.api.nvim_set_current_buf(bufnr)
+
+	-- All headings start their own folds
+	MiniTest.expect.equality(folding.get_fold_level(1), ">1")
+	MiniTest.expect.equality(folding.get_fold_level(2), ">2")
+	MiniTest.expect.equality(folding.get_fold_level(4), ">2")
+	MiniTest.expect.equality(folding.get_fold_level(5), ">1")
+	MiniTest.expect.equality(folding.get_fold_level(6), ">2")
+
+	cleanup_buffer(bufnr)
+end
+
 -- Test: setup_buffer_folding
 T["setup_buffer_folding - sets foldmethod to expr"] = function()
 	local bufnr = create_test_buffer({
@@ -198,6 +244,37 @@ T["setup_buffer_folding - auto-folds when config enabled"] = function()
 	-- Check window-local foldlevel
 	local winid = vim.fn.bufwinid(bufnr)
 	MiniTest.expect.equality(vim.wo[winid].foldlevel, 0)
+
+	-- Restore original config
+	config._runtime = original_config
+	cleanup_buffer(bufnr)
+end
+
+T["setup_buffer_folding - auto-fold shows sibling headings"] = function()
+	-- Save original config
+	local config = require("org_markdown.config")
+	local original_config = vim.deepcopy(config._runtime)
+
+	-- Set up config with auto-fold enabled
+	config._runtime = config._runtime or {}
+	config._runtime.folding = {
+		enabled = true,
+		auto_fold_on_open = true,
+	}
+
+	local bufnr = create_test_buffer({
+		"## TODO First task",
+		"Content",
+		"## TODO Second task",
+		"More content",
+	})
+
+	folding.setup_buffer_folding(bufnr)
+
+	-- Check window-local foldlevel
+	-- For level 2 headings, foldlevel should be 1 (shows all ## headings, folds content)
+	local winid = vim.fn.bufwinid(bufnr)
+	MiniTest.expect.equality(vim.wo[winid].foldlevel, 1)
 
 	-- Restore original config
 	config._runtime = original_config
@@ -333,8 +410,8 @@ T["cycle_heading_fold - cycles through states"] = function()
 	})
 	vim.api.nvim_set_current_buf(bufnr)
 
-	-- Initialize state tracking manually
-	vim.b[bufnr].org_markdown_fold_states = {}
+	-- Setup folding properly (not just state tracking)
+	folding.setup_buffer_folding(bufnr)
 
 	-- Set cursor on heading
 	vim.api.nvim_win_set_cursor(0, { 1, 0 })
