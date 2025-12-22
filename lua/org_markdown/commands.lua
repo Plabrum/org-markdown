@@ -91,11 +91,13 @@ function M.register()
 			editing.setup_editing_keybinds(args.buf)
 			syntax.setup_buffer_syntax(args.buf)
 
-			-- Setup folding if enabled
+			-- Setup folding if enabled (deferred to run after other plugins like Pencil)
 			local folding_config = config.folding or {}
 			if folding_config.enabled then
-				local folding = require("org_markdown.folding")
-				folding.setup_buffer_folding(args.buf)
+				vim.schedule(function()
+					local folding = require("org_markdown.folding")
+					folding.setup_buffer_folding(args.buf)
+				end)
 			end
 		end,
 	})

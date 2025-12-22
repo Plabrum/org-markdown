@@ -109,8 +109,18 @@ function M.cycle_heading_fold()
 		return false
 	end
 
-	-- Get current state (default to "expanded" if not tracked)
-	local current_state = M.get_fold_state(bufnr, lnum) or "expanded"
+	-- Get current state - detect from actual fold if not tracked
+	local current_state = M.get_fold_state(bufnr, lnum)
+	if not current_state then
+		-- Detect actual fold state from Neovim
+		local foldclosed = vim.fn.foldclosed(lnum)
+		if foldclosed == lnum then
+			-- This heading's fold is closed
+			current_state = "folded"
+		else
+			current_state = "expanded"
+		end
+	end
 
 	-- Cycle to next state
 	local next_state
@@ -132,6 +142,11 @@ function M.cycle_heading_fold()
 		-- Open this fold, close all child folds
 		vim.cmd("normal! zo")
 
+		-- Check if fold actually opened, try zO if not
+		if vim.fn.foldclosed(lnum) ~= -1 then
+			vim.cmd("normal! zO")
+		end
+
 		-- Find and close all direct children
 		local children = find_child_headings(bufnr, lnum, heading_level)
 		for _, child in ipairs(children) do
@@ -142,35 +157,24 @@ function M.cycle_heading_fold()
 
 		-- Return cursor to original heading
 		vim.api.nvim_win_set_cursor(0, cursor)
-	elseif next_state == "subtree" then
+	elseif next_state == "subtree" or next_state == "expanded" then
 		-- Open all folds in entire subtree
 		local subtree_end = find_subtree_end(bufnr, lnum, heading_level)
 
-		-- Open this fold
+		-- Open this fold (try zO if zo doesn't work)
 		vim.cmd("normal! zo")
-
-		-- Open all folds in the subtree range
-		for i = lnum + 1, subtree_end do
-			if M.is_heading_line(i) then
-				vim.api.nvim_win_set_cursor(0, { i, 0 })
-				vim.cmd("normal! zo")
-			end
+		if vim.fn.foldclosed(lnum) ~= -1 then
+			vim.cmd("normal! zO")
 		end
 
-		-- Return cursor to original heading
-		vim.api.nvim_win_set_cursor(0, cursor)
-	else -- expanded
-		-- Open all folds in entire subtree (same as subtree state)
-		local subtree_end = find_subtree_end(bufnr, lnum, heading_level)
-
-		-- Open this fold
-		vim.cmd("normal! zo")
-
 		-- Open all folds in the subtree range
 		for i = lnum + 1, subtree_end do
 			if M.is_heading_line(i) then
 				vim.api.nvim_win_set_cursor(0, { i, 0 })
 				vim.cmd("normal! zo")
+				if vim.fn.foldclosed(i) ~= -1 then
+					vim.cmd("normal! zO")
+				end
 			end
 		end
 

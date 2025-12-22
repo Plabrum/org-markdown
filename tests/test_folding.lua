@@ -416,6 +416,10 @@ T["cycle_heading_fold - cycles through states"] = function()
 	-- Set cursor on heading
 	vim.api.nvim_win_set_cursor(0, { 1, 0 })
 
+	-- Ensure we start from expanded state by opening all folds
+	vim.cmd("normal! zR")
+	folding.set_fold_state(bufnr, 1, "expanded")
+
 	-- First cycle: expanded -> folded
 	folding.cycle_heading_fold()
 	MiniTest.expect.equality(folding.get_fold_state(bufnr, 1), "folded")
@@ -432,6 +436,45 @@ T["cycle_heading_fold - cycles through states"] = function()
 	folding.cycle_heading_fold()
 	MiniTest.expect.equality(folding.get_fold_state(bufnr, 1), "expanded")
 
+	cleanup_buffer(bufnr)
+end
+
+T["cycle_heading_fold - detects closed fold when auto_fold_on_open"] = function()
+	-- Save original config
+	local config = require("org_markdown.config")
+	local original_config = vim.deepcopy(config._runtime)
+
+	-- Set up config with auto-fold enabled
+	config._runtime = config._runtime or {}
+	config._runtime.folding = {
+		enabled = true,
+		auto_fold_on_open = true,
+	}
+
+	local bufnr = create_test_buffer({
+		"# Heading",
+		"Content under heading",
+	})
+	vim.api.nvim_set_current_buf(bufnr)
+
+	-- Setup folding (this will close all folds due to auto_fold_on_open)
+	folding.setup_buffer_folding(bufnr)
+
+	-- Set cursor on heading
+	vim.api.nvim_win_set_cursor(0, { 1, 0 })
+
+	-- Verify fold is actually closed
+	MiniTest.expect.equality(vim.fn.foldclosed(1), 1)
+
+	-- First cycle should detect closed fold and cycle to "children" (not "folded")
+	folding.cycle_heading_fold()
+	MiniTest.expect.equality(folding.get_fold_state(bufnr, 1), "children")
+
+	-- Verify fold is now open
+	MiniTest.expect.equality(vim.fn.foldclosed(1), -1)
+
+	-- Restore original config
+	config._runtime = original_config
 	cleanup_buffer(bufnr)
 end
 

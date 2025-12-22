@@ -277,15 +277,15 @@ function M.push_to_linear()
 			return
 		end
 
-		-- Scan files for items to push
-		local items = push_helpers.scan_files_for_push_items(plugin_config.push.staging_file)
+		-- Scan files for items to push (get lines for in-memory manipulation)
+		local items, lines, staging_file_path = push_helpers.scan_files_for_push_items(plugin_config.push.staging_file)
 
 		if #items == 0 then
-			vim.schedule(function()
-				vim.notify("No items to push to Linear", vim.log.levels.INFO)
-			end)
 			return
 		end
+
+		-- Track successful ranges for batch removal at the end
+		local successful_ranges = {}
 
 		-- Push each item
 		local results = {
@@ -319,10 +319,8 @@ function M.push_to_linear()
 							results.conflicts = results.conflicts + 1
 							results.skipped = results.skipped + 1
 						elseif reason == "deleted" then
-							-- Issue was deleted in Linear - clear metadata so it can be recreated
-							vim.schedule(function()
-								push_helpers.clear_linear_metadata(item.file, item.line)
-							end)
+							-- Issue was deleted in Linear - remove from staging
+							table.insert(successful_ranges, { start_line = item.line, end_line = item.end_line })
 							results.deleted = results.deleted + 1
 							results.skipped = results.skipped + 1
 						end
@@ -332,10 +330,8 @@ function M.push_to_linear()
 					-- Update issue in Linear
 					local updated_issue, update_err = api.update_linear_issue(item, api_key, team_id)
 					if updated_issue then
-						-- Remove from staging (already tracked in Linear)
-						vim.schedule(function()
-							push_helpers.remove_from_staging(item.file, item.line)
-						end)
+						-- Track for batch removal
+						table.insert(successful_ranges, { start_line = item.line, end_line = item.end_line })
 
 						results.updated = results.updated + 1
 						results.success = results.success + 1
@@ -346,10 +342,8 @@ function M.push_to_linear()
 					-- CREATE new issue
 					local created_issue, create_err = api.create_linear_issue(item, api_key, team_id)
 					if created_issue then
-						-- Remove from staging (will appear in linear.md on next pull)
-						vim.schedule(function()
-							push_helpers.remove_from_staging(item.file, item.line)
-						end)
+						-- Track for batch removal
+						table.insert(successful_ranges, { start_line = item.line, end_line = item.end_line })
 
 						results.created = results.created + 1
 						results.success = results.success + 1
@@ -363,6 +357,13 @@ function M.push_to_linear()
 				results.failed = results.failed + 1
 				-- Log error silently (could add debug logging here)
 			end
+		end
+
+		-- Remove all successful items from staging file in one operation
+		if #successful_ranges > 0 and staging_file_path then
+			vim.schedule(function()
+				push_helpers.remove_ranges_and_write(staging_file_path, lines, successful_ranges)
+			end)
 		end
 
 		-- Notify user of results

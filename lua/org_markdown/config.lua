@@ -2,6 +2,7 @@ local M = {
 	captures = {
 		window_method = "horizontal",
 		default_template = "Task",
+		start_in_insert = false, -- Start capture buffer in insert mode
 
 		-- Author name for %n template marker
 		-- Defaults to git config user.name, then $USER if not set

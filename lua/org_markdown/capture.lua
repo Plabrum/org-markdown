@@ -61,7 +61,8 @@ function M.open_capture_buffer_async(content, cursor_row, cursor_col, tpl)
 		})
 
 		vim.api.nvim_buf_set_lines(buf, 0, -1, false, vim.split(content, "\n"))
-		utils.set_cursor(win, cursor_row, cursor_col, "i")
+		local mode = config.captures.start_in_insert and "i" or "n"
+		utils.set_cursor(win, cursor_row, cursor_col, mode)
 
 		-- Setup template cycling if multiple templates exist
 		local template_names = vim.tbl_keys(config.captures.templates)

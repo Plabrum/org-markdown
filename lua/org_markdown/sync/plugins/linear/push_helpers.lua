@@ -366,7 +366,9 @@ end
 --- Scan staging file for items to push to Linear
 --- Only reads from staging file to avoid duplicates in agenda
 --- @param staging_file string Path to staging file
---- @return table Array of items to push
+--- @return table items Array of items to push
+--- @return table lines All lines from the file (for in-memory manipulation)
+--- @return string expanded_file Expanded file path
 function M.scan_files_for_push_items(staging_file)
 	local parser = require("org_markdown.utils.parser")
 	local utils = require("org_markdown.utils.utils")
@@ -375,7 +377,7 @@ function M.scan_files_for_push_items(staging_file)
 
 	-- Only scan the staging file
 	if not staging_file then
-		return items_to_push
+		return items_to_push, {}, nil
 	end
 
 	local expanded_file = vim.fn.expand(staging_file)
@@ -394,12 +396,12 @@ function M.scan_files_for_push_items(staging_file)
 			"",
 		}
 		utils.write_lines(expanded_file, initial_content)
-		return items_to_push -- File is empty, nothing to push yet
+		return items_to_push, initial_content, expanded_file
 	end
 
 	local lines = utils.read_lines(expanded_file)
 	if not lines then
-		return items_to_push
+		return items_to_push, {}, expanded_file
 	end
 
 	for i, line in ipairs(lines) do
@@ -412,6 +414,15 @@ function M.scan_files_for_push_items(staging_file)
 			local linear_id = M.extract_linear_id_from_body(lines, i + 1)
 
 			if heading.state or linear_id then
+				-- Find end of this item (line before next heading or end of file)
+				local end_line = #lines
+				for j = i + 1, #lines do
+					if parser.parse_headline(lines[j]) then
+						end_line = j - 1
+						break
+					end
+				end
+
 				-- Extract metadata and body
 				local body = M.extract_body_below_heading(lines, i)
 				local description = M.extract_description_from_body(body)
@@ -422,6 +433,7 @@ function M.scan_files_for_push_items(staging_file)
 				local item = {
 					file = expanded_file,
 					line = i,
+					end_line = end_line,
 					title = heading.text,
 					status = heading.state,
 					priority = heading.priority,
@@ -445,37 +457,30 @@ function M.scan_files_for_push_items(staging_file)
 		end
 	end
 
-	return items_to_push
+	return items_to_push, lines, expanded_file
 end
 
---- Remove successfully pushed item from staging file
---- @param file string Staging file path
---- @param line_num number Line number of the heading to remove
-function M.remove_from_staging(file, line_num)
-	local utils = require("org_markdown.utils.utils")
-	local parser = require("org_markdown.utils.parser")
-
-	local lines = utils.read_lines(file)
-	if not lines or not lines[line_num] then
+--- Remove successful ranges from lines and write to file
+--- @param file string File path to write to
+--- @param lines table Array of lines (modified in place)
+--- @param successful_ranges table Array of {start_line, end_line} ranges to remove
+function M.remove_ranges_and_write(file, lines, successful_ranges)
+	if not file or not lines or not successful_ranges or #successful_ranges == 0 then
 		return
 	end
 
-	-- Find the range to remove (heading + all content until next heading)
-	local remove_start = line_num
-	local remove_end = line_num
+	local utils = require("org_markdown.utils.utils")
 
-	-- Find end of this item (next heading or end of file)
-	for i = line_num + 1, #lines do
-		if parser.parse_headline(lines[i]) then
-			remove_end = i - 1
-			break
+	-- Sort ranges by start_line in descending order (remove from end first)
+	table.sort(successful_ranges, function(a, b)
+		return a.start_line > b.start_line
+	end)
+
+	-- Remove each range from lines (in reverse order so indices stay valid)
+	for _, range in ipairs(successful_ranges) do
+		for i = range.end_line, range.start_line, -1 do
+			table.remove(lines, i)
 		end
-		remove_end = i
-	end
-
-	-- Remove the lines
-	for i = remove_end, remove_start, -1 do
-		table.remove(lines, i)
 	end
 
 	-- Remove any trailing blank lines
@@ -483,6 +488,7 @@ function M.remove_from_staging(file, line_num)
 		table.remove(lines)
 	end
 
+	-- Write the modified lines back to file
 	utils.write_lines(file, lines)
 end
 

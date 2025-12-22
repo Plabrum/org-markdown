@@ -145,6 +145,7 @@ function M.setup_editing_keybinds(bufnr)
 			local did_fold = folding.cycle_heading_fold()
 			if not did_fold then
 				-- Fallback to checkbox/status cycling
+				vim.notify("Fold: fallback to checkbox/status cycling", vim.log.levels.DEBUG)
 				M.edit_line_at_cursor(function(line)
 					return M.cycle_checkbox_inline(line, config.checkbox_states) or M.cycle_status_inline(line, config.status_states)
 				end)
