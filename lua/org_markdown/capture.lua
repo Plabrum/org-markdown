@@ -61,8 +61,15 @@ function M.open_capture_buffer_async(content, cursor_row, cursor_col, tpl)
 		})
 
 		vim.api.nvim_buf_set_lines(buf, 0, -1, false, vim.split(content, "\n"))
-		local mode = config.captures.start_in_insert and "i" or "n"
-		utils.set_cursor(win, cursor_row, cursor_col, mode)
+
+		-- Disable folding in capture buffer
+		vim.wo[win].foldenable = false
+
+		-- Position cursor at %? location but stay in normal mode
+		-- Use schedule to ensure cursor is set after all buffer setup
+		vim.schedule(function()
+			vim.api.nvim_win_set_cursor(win, { cursor_row + 1, cursor_col })
+		end)
 
 		-- Setup template cycling if multiple templates exist
 		local template_names = vim.tbl_keys(config.captures.templates)
