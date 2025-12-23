@@ -278,113 +278,47 @@ end
 -- PUSH TO CALENDAR (markdown → Calendar.app)
 -- =========================================================================
 
---- Extract Calendar UID from body metadata
---- @param body string|nil Body content
+--- Extract Calendar UID from node property
+--- @param node table Document node
 --- @return string|nil UID if found
-local function extract_uid_from_body(body)
-	if not body or body == "" then
-		return nil
-	end
-	-- Match: **Calendar ID:** `<uid>`
-	local uid = body:match("%*%*Calendar ID:%*%* `([^`]+)`")
-	if uid then
-		return uid
-	end
-	-- Also try: **ID:** `<uid>` (used by pull sync)
-	uid = body:match("%*%*ID:%*%* `([^`]+)`")
-	return uid
+local function extract_uid_from_node(node)
+	return node:get_property("CALENDAR_ID")
 end
 
---- Extract body content below a heading
---- @param file string File path
---- @param line_num number Heading line number
---- @return string|nil Body content (may be empty string)
-local function extract_body_below_heading(file, line_num)
-	local utils = require("org_markdown.utils.utils")
-	local parser = require("org_markdown.utils.parser")
-
-	local lines = utils.read_lines(file)
-	if not lines or line_num >= #lines then
+--- Extract body content from node
+--- @param node table Document node
+--- @return string|nil Body content
+local function extract_body_from_node(node)
+	if not node.content_lines or #node.content_lines == 0 then
 		return nil
 	end
-
-	local body_lines = {}
-	local i = line_num + 1
-
-	-- Collect lines until next heading or end of file
-	while i <= #lines do
-		local line = lines[i]
-		-- Stop at next heading
-		if parser.parse_headline(line) then
-			break
-		end
-		table.insert(body_lines, line)
-		i = i + 1
-	end
-
-	return #body_lines > 0 and table.concat(body_lines, "\n") or nil
+	return table.concat(node.content_lines, "\n")
 end
 
---- Update markdown item with Calendar UID after creation
+--- Update markdown item with Calendar UID after creation using document model
+--- Stores UID as CALENDAR_ID property and adds sync timestamp
 --- @param file string File path
 --- @param line_num number Heading line number
 --- @param uid string Calendar UID
 local function update_item_with_uid(file, line_num, uid)
-	local utils = require("org_markdown.utils.utils")
-	local parser = require("org_markdown.utils.parser")
+	local document = require("org_markdown.utils.document")
 
-	local lines = utils.read_lines(file)
-	if not lines or not lines[line_num] then
+	local root = document.read_from_file(file)
+	local node = document.find_node_at_line(root, line_num)
+
+	if not node or node.type ~= "heading" then
 		return
 	end
 
+	-- Set the Calendar ID as a property (new format)
+	node:set_property("CALENDAR_ID", uid)
+
+	-- Set last synced timestamp as property
 	local timestamp = os.date("%Y-%m-%d %H:%M")
+	node:set_property("LAST_SYNCED", timestamp)
 
-	-- Find insertion point (after heading, before next heading or end)
-	local insert_pos = line_num + 1
-	local found_existing = false
-
-	while insert_pos <= #lines do
-		local line = lines[insert_pos]
-
-		-- Stop at next heading
-		if parser.parse_headline(line) then
-			break
-		end
-
-		-- Check if Calendar ID already exists
-		if line:match("%*%*Calendar ID:%*%*") or line:match("%*%*ID:%*%*") then
-			-- Update existing metadata
-			lines[insert_pos] = string.format("**Calendar ID:** `%s`", uid)
-			-- Check if next line is Last Synced
-			if insert_pos + 1 <= #lines and lines[insert_pos + 1]:match("%*%*Last Synced:%*%*") then
-				lines[insert_pos + 1] = string.format("**Last Synced:** %s", timestamp)
-			else
-				table.insert(lines, insert_pos + 1, string.format("**Last Synced:** %s", timestamp))
-			end
-			found_existing = true
-			break
-		end
-
-		insert_pos = insert_pos + 1
-	end
-
-	if not found_existing then
-		-- Insert new metadata block after heading
-		local metadata_lines = {
-			"",
-			string.format("**Calendar ID:** `%s`", uid),
-			string.format("**Last Synced:** %s", timestamp),
-			"",
-		}
-
-		-- Insert metadata
-		for i = #metadata_lines, 1, -1 do
-			table.insert(lines, line_num + 1, metadata_lines[i])
-		end
-	end
-
-	utils.write_lines(file, lines)
+	-- Write back to file
+	document.write_to_file(file, root)
 end
 
 --- Create event in Calendar.app via Swift script
@@ -594,6 +528,48 @@ end
 
 --- Push items from markdown files to Calendar.app (async)
 --- Scans all markdown files for items with tracked dates, excluding sync file (calendar.md)
+--- Collect pushable items from a document tree recursively
+--- @param node table Document node
+--- @param file string File path
+--- @param items table Output array to append to
+local function collect_push_items_from_tree(node, file, items)
+	if node.type == "heading" and node.parsed and node.parsed.tracked then
+		-- Item has tracked date - add to sync list
+		local uid = extract_uid_from_node(node)
+		local body = extract_body_from_node(node)
+
+		-- Parse end date for multi-day events
+		local end_date = nil
+		if node.raw_heading then
+			local end_date_match = node.raw_heading:match("<[^>]+>%-%-<([^>]+)>")
+			if end_date_match then
+				local end_date_str = end_date_match:match("(%d%d%d%d%-%d%d%-%d%d)")
+				if end_date_str then
+					end_date = datetime.parse_iso_date(end_date_str)
+				end
+			end
+		end
+
+		table.insert(items, {
+			title = node.parsed.text,
+			start_date = datetime.parse_iso_date(node.parsed.tracked),
+			end_date = end_date,
+			start_time = node.parsed.start_time,
+			end_time = node.parsed.end_time,
+			all_day = node.parsed.all_day,
+			file = file,
+			line = node.start_line,
+			uid = uid,
+			body = body,
+		})
+	end
+
+	-- Recurse into children
+	for _, child in ipairs(node.children or {}) do
+		collect_push_items_from_tree(child, file, items)
+	end
+end
+
 --- Runs asynchronously and doesn't block the UI
 function M.push_to_calendar()
 	async.run(function()
@@ -605,13 +581,12 @@ function M.push_to_calendar()
 		end
 
 		local queries = require("org_markdown.utils.queries")
-		local utils = require("org_markdown.utils.utils")
-		local parser = require("org_markdown.utils.parser")
+		local document = require("org_markdown.utils.document")
 
 		-- Get all markdown files
 		local files = queries.find_markdown_files()
 
-		-- Scan for items with tracked dates
+		-- Scan for items with tracked dates using document model
 		local items_to_push = {}
 		local sync_filename = vim.fn.fnamemodify(vim.fn.expand(plugin_config.sync_file), ":t")
 
@@ -622,39 +597,9 @@ function M.push_to_calendar()
 				goto continue
 			end
 
-			local lines = utils.read_lines(file)
-			for i, line in ipairs(lines) do
-				local heading = parser.parse_headline(line)
-				if heading and heading.tracked then
-					-- Item has tracked date - add to sync list
-					local body = extract_body_below_heading(file, i)
-					local uid = extract_uid_from_body(body)
-
-					-- Parse end date for multi-day events
-					local end_date = nil
-					local end_date_match = line:match("<[^>]+>%-%-<([^>]+)>")
-					if end_date_match then
-						-- Extract just the date part (YYYY-MM-DD)
-						local end_date_str = end_date_match:match("(%d%d%d%d%-%d%d%-%d%d)")
-						if end_date_str then
-							end_date = datetime.parse_iso_date(end_date_str)
-						end
-					end
-
-					table.insert(items_to_push, {
-						title = heading.text,
-						start_date = datetime.parse_iso_date(heading.tracked),
-						end_date = end_date,
-						start_time = heading.start_time,
-						end_time = heading.end_time,
-						all_day = heading.all_day,
-						file = file,
-						line = i,
-						uid = uid,
-						body = body,
-					})
-				end
-			end
+			-- Parse file into document tree and collect push items
+			local root = document.read_from_file(file)
+			collect_push_items_from_tree(root, file, items_to_push)
 
 			::continue::
 		end

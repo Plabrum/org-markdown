@@ -11,122 +11,38 @@
 local M = {}
 
 -- =========================================================================
--- EXTRACTION HELPERS
+-- NODE-BASED EXTRACTION HELPERS (using document model)
 -- =========================================================================
 
---- Extract Linear ID from markdown body (HTML comment format)
---- @param lines table Array of lines
---- @param start_line number Line number to start searching from
+--- Extract Linear ID from node property
+--- @param node table Document node
 --- @return string|nil Linear issue identifier (e.g., "IF-123")
-function M.extract_linear_id_from_body(lines, start_line)
-	if not lines or not start_line then
-		return nil
-	end
-
-	-- Look ahead up to 10 lines for Linear ID comment
-	for i = start_line, math.min(start_line + 9, #lines) do
-		local line = lines[i]
-
-		-- Stop at next heading
-		local parser = require("org_markdown.utils.parser")
-		if parser.parse_headline(line) then
-			break
-		end
-
-		-- Match: <!-- Linear ID: IF-123 -->
-		local linear_id = line:match("<!%-%- Linear ID: ([^%s]+) %-%->")
-		if linear_id then
-			return linear_id
-		end
-	end
-
-	return nil
+function M.extract_linear_id_from_node(node)
+	return node:get_property("LINEAR_ID")
 end
 
---- Extract Last Synced timestamp from markdown body
---- @param lines table Array of lines
---- @param start_line number Line number to start searching from
+--- Extract Last Synced timestamp from node property
+--- @param node table Document node
 --- @return string|nil ISO timestamp
-function M.extract_last_synced(lines, start_line)
-	if not lines or not start_line then
-		return nil
-	end
-
-	for i = start_line, math.min(start_line + 9, #lines) do
-		local line = lines[i]
-
-		local parser = require("org_markdown.utils.parser")
-		if parser.parse_headline(line) then
-			break
-		end
-
-		-- Match: <!-- Last Synced: 2025-12-20T14:30:00Z -->
-		local timestamp = line:match("<!%-%- Last Synced: ([^%s]+) %-%->")
-		if timestamp then
-			return timestamp
-		end
-	end
-
-	return nil
+function M.extract_last_synced_from_node(node)
+	return node:get_property("LINEAR_LAST_SYNCED")
 end
 
---- Extract Linear Updated timestamp from markdown body
---- @param lines table Array of lines
---- @param start_line number Line number to start searching from
---- @return string|nil ISO timestamp from Linear's updatedAt field
-function M.extract_linear_updated(lines, start_line)
-	if not lines or not start_line then
-		return nil
-	end
-
-	for i = start_line, math.min(start_line + 9, #lines) do
-		local line = lines[i]
-
-		local parser = require("org_markdown.utils.parser")
-		if parser.parse_headline(line) then
-			break
-		end
-
-		-- Match: <!-- Linear Updated: 2025-12-19T10:00:00Z -->
-		local timestamp = line:match("<!%-%- Linear Updated: ([^%s]+) %-%->")
-		if timestamp then
-			return timestamp
-		end
-	end
-
-	return nil
+--- Extract Linear Updated timestamp from node property
+--- @param node table Document node
+--- @return string|nil ISO timestamp
+function M.extract_linear_updated_from_node(node)
+	return node:get_property("LINEAR_UPDATED")
 end
 
---- Extract body content below heading, excluding metadata comments
---- @param lines table Array of all lines in file
---- @param heading_line number Line number of the heading
---- @return string Body content with metadata stripped
-function M.extract_body_below_heading(lines, heading_line)
-	if not lines or not heading_line then
+--- Extract body content from node
+--- @param node table Document node
+--- @return string Body content
+function M.extract_body_from_node(node)
+	if not node.content_lines or #node.content_lines == 0 then
 		return ""
 	end
-
-	local parser = require("org_markdown.utils.parser")
-	local body_lines = {}
-
-	-- Start from line after heading
-	for i = heading_line + 1, #lines do
-		local line = lines[i]
-
-		-- Stop at next heading
-		if parser.parse_headline(line) then
-			break
-		end
-
-		-- Skip metadata comments (Linear ID, timestamps)
-		if not line:match("<!%-%- Linear") and not line:match("<!%-%- Last Synced") then
-			table.insert(body_lines, line)
-		end
-	end
-
-	-- Join lines and trim whitespace
-	local body = table.concat(body_lines, "\n")
-	return body:gsub("^%s+", ""):gsub("%s+$", "")
+	return table.concat(node.content_lines, "\n")
 end
 
 --- Extract clean description from body (strip Linear-specific metadata blocks)
@@ -232,145 +148,117 @@ end
 -- METADATA UPDATES
 -- =========================================================================
 
---- Update markdown item with Linear metadata after push
---- Inserts or updates HTML comments with Linear ID and timestamps
+--- Update markdown item with Linear metadata after push using document model
+--- Stores metadata as node properties
 --- @param file string File path
 --- @param line_num number Heading line number
 --- @param linear_id string Linear issue identifier (e.g., "IF-123")
 --- @param updated_at string Linear's updatedAt timestamp
 function M.update_item_with_linear_metadata(file, line_num, linear_id, updated_at)
-	local utils = require("org_markdown.utils.utils")
-	local parser = require("org_markdown.utils.parser")
+	local document = require("org_markdown.utils.document")
 
-	local lines = utils.read_lines(file)
-	if not lines or not lines[line_num] then
+	local root = document.read_from_file(file)
+	local node = document.find_node_at_line(root, line_num)
+
+	if not node or node.type ~= "heading" then
 		return
 	end
 
 	local timestamp = os.date("!%Y-%m-%dT%H:%M:%SZ") -- UTC ISO 8601
 
-	-- Find insertion point (after heading, before next heading or body content)
-	local insert_pos = line_num + 1
-	local found_linear_id = false
-	local found_last_synced = false
-	local found_linear_updated = false
+	-- Set metadata as node properties (new format)
+	node:set_property("LINEAR_ID", linear_id)
+	node:set_property("LINEAR_LAST_SYNCED", timestamp)
+	node:set_property("LINEAR_UPDATED", updated_at)
 
-	-- Check if metadata already exists (within next 10 lines)
-	for i = insert_pos, math.min(insert_pos + 9, #lines) do
-		local line = lines[i]
-
-		-- Stop at next heading
-		if parser.parse_headline(line) then
-			break
-		end
-
-		-- Check for existing metadata comments
-		if line:match("<!%-%- Linear ID:") then
-			lines[i] = string.format("<!-- Linear ID: %s -->", linear_id)
-			found_linear_id = true
-		elseif line:match("<!%-%- Last Synced:") then
-			lines[i] = string.format("<!-- Last Synced: %s -->", timestamp)
-			found_last_synced = true
-		elseif line:match("<!%-%- Linear Updated:") then
-			lines[i] = string.format("<!-- Linear Updated: %s -->", updated_at)
-			found_linear_updated = true
-		end
-	end
-
-	-- If metadata doesn't exist, insert it after heading
-	if not (found_linear_id and found_last_synced and found_linear_updated) then
-		local metadata_lines = {}
-
-		-- Add blank line before metadata if heading has content after it
-		if
-			#lines >= insert_pos
-			and lines[insert_pos]
-			and lines[insert_pos] ~= ""
-			and not lines[insert_pos]:match("^<!%-%-")
-		then
-			table.insert(metadata_lines, "")
-		end
-
-		-- Add missing metadata
-		if not found_linear_id then
-			table.insert(metadata_lines, string.format("<!-- Linear ID: %s -->", linear_id))
-		end
-		if not found_last_synced then
-			table.insert(metadata_lines, string.format("<!-- Last Synced: %s -->", timestamp))
-		end
-		if not found_linear_updated then
-			table.insert(metadata_lines, string.format("<!-- Linear Updated: %s -->", updated_at))
-		end
-
-		-- Insert metadata
-		for i = #metadata_lines, 1, -1 do
-			table.insert(lines, insert_pos, metadata_lines[i])
-		end
-	end
-
-	utils.write_lines(file, lines)
+	-- Write back to file
+	document.write_to_file(file, root)
 end
 
---- Clear Linear metadata from markdown when issue is deleted
---- Removes HTML comments for Linear ID and timestamps
+--- Clear Linear metadata from markdown when issue is deleted using document model
+--- Removes Linear properties from node
 --- @param file string File path
 --- @param line_num number Heading line number
 function M.clear_linear_metadata(file, line_num)
-	local utils = require("org_markdown.utils.utils")
-	local parser = require("org_markdown.utils.parser")
+	local document = require("org_markdown.utils.document")
 
-	local lines = utils.read_lines(file)
-	if not lines or not lines[line_num] then
+	local root = document.read_from_file(file)
+	local node = document.find_node_at_line(root, line_num)
+
+	if not node or node.type ~= "heading" then
 		return
 	end
 
-	local insert_pos = line_num + 1
-	local lines_to_remove = {}
+	-- Clear Linear properties
+	node:set_property("LINEAR_ID", nil)
+	node:set_property("LINEAR_LAST_SYNCED", nil)
+	node:set_property("LINEAR_UPDATED", nil)
 
-	-- Find and mark metadata lines for removal (within next 10 lines)
-	for i = insert_pos, math.min(insert_pos + 9, #lines) do
-		local line = lines[i]
-
-		-- Stop at next heading
-		if parser.parse_headline(line) then
-			break
-		end
-
-		-- Mark Linear metadata comments for removal
-		if line:match("<!%-%- Linear ID:") or line:match("<!%-%- Last Synced:") or line:match("<!%-%- Linear Updated:") then
-			table.insert(lines_to_remove, i)
-		end
-	end
-
-	-- Remove marked lines (in reverse order to maintain indices)
-	for i = #lines_to_remove, 1, -1 do
-		table.remove(lines, lines_to_remove[i])
-	end
-
-	-- Remove any blank line that was before metadata
-	if #lines_to_remove > 0 and insert_pos <= #lines and lines[insert_pos] == "" then
-		-- Check if the next line after the blank is not a metadata comment (we removed all metadata)
-		local next_line = lines[insert_pos + 1]
-		if not next_line or not next_line:match("^<!%-%-") then
-			table.remove(lines, insert_pos)
-		end
-	end
-
-	utils.write_lines(file, lines)
+	-- Write back to file
+	document.write_to_file(file, root)
 end
 
 -- =========================================================================
 -- FILE SCANNING
 -- =========================================================================
 
---- Scan staging file for items to push to Linear
+--- Collect push items from a document tree recursively
+--- @param node table Document node
+--- @param file string File path
+--- @param items table Output array to append to
+local function collect_push_items_from_tree(node, file, items)
+	local parser = require("org_markdown.utils.parser")
+
+	if node.type == "heading" then
+		local linear_id = M.extract_linear_id_from_node(node)
+		local has_state = node.parsed and node.parsed.state
+
+		if has_state or linear_id then
+			local body = M.extract_body_from_node(node)
+			local description = M.extract_description_from_body(body)
+			local last_synced = M.extract_last_synced_from_node(node)
+			local linear_updated = M.extract_linear_updated_from_node(node)
+
+			local item = {
+				file = file,
+				line = node.start_line,
+				end_line = node.end_line,
+				title = node.parsed and node.parsed.text or "",
+				status = node.parsed and node.parsed.state,
+				priority = node.parsed and node.parsed.priority,
+				tags = node.parsed and node.parsed.tags,
+				linear_id = linear_id,
+				last_synced = last_synced,
+				linear_updated = linear_updated,
+				description = description,
+			}
+
+			-- Extract due date from tracked date
+			if node.parsed and node.parsed.tracked then
+				local date = parser.extract_date(node.parsed.tracked)
+				if date then
+					item.due_date = date
+				end
+			end
+
+			table.insert(items, item)
+		end
+	end
+
+	-- Recurse into children
+	for _, child in ipairs(node.children or {}) do
+		collect_push_items_from_tree(child, file, items)
+	end
+end
+
+--- Scan staging file for items to push to Linear using document model
 --- Only reads from staging file to avoid duplicates in agenda
 --- @param staging_file string Path to staging file
 --- @return table items Array of items to push
 --- @return table lines All lines from the file (for in-memory manipulation)
 --- @return string expanded_file Expanded file path
 function M.scan_files_for_push_items(staging_file)
-	local parser = require("org_markdown.utils.parser")
+	local document = require("org_markdown.utils.document")
 	local utils = require("org_markdown.utils.utils")
 
 	local items_to_push = {}
@@ -399,63 +287,15 @@ function M.scan_files_for_push_items(staging_file)
 		return items_to_push, initial_content, expanded_file
 	end
 
+	-- Read lines for backward compat return value
 	local lines = utils.read_lines(expanded_file)
 	if not lines then
 		return items_to_push, {}, expanded_file
 	end
 
-	for i, line in ipairs(lines) do
-		local heading = parser.parse_headline(line)
-
-		if heading then
-			-- Check if this item should be pushed:
-			-- 1. Has a TODO state (TODO, IN_PROGRESS, etc.)
-			-- 2. Has a Linear ID (existing issue for updates)
-			local linear_id = M.extract_linear_id_from_body(lines, i + 1)
-
-			if heading.state or linear_id then
-				-- Find end of this item (line before next heading or end of file)
-				local end_line = #lines
-				for j = i + 1, #lines do
-					if parser.parse_headline(lines[j]) then
-						end_line = j - 1
-						break
-					end
-				end
-
-				-- Extract metadata and body
-				local body = M.extract_body_below_heading(lines, i)
-				local description = M.extract_description_from_body(body)
-				local last_synced = M.extract_last_synced(lines, i + 1)
-				local linear_updated = M.extract_linear_updated(lines, i + 1)
-
-				-- Build item
-				local item = {
-					file = expanded_file,
-					line = i,
-					end_line = end_line,
-					title = heading.text,
-					status = heading.state,
-					priority = heading.priority,
-					tags = heading.tags,
-					linear_id = linear_id,
-					last_synced = last_synced,
-					linear_updated = linear_updated,
-					description = description,
-				}
-
-				-- Extract due date from tracked date
-				if heading.tracked then
-					local date = parser.extract_date(heading.tracked)
-					if date then
-						item.due_date = date
-					end
-				end
-
-				table.insert(items_to_push, item)
-			end
-		end
-	end
+	-- Parse with document model and collect items
+	local root = document.parse(lines)
+	collect_push_items_from_tree(root, expanded_file, items_to_push)
 
 	return items_to_push, lines, expanded_file
 end

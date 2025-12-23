@@ -1,7 +1,6 @@
 local config = require("org_markdown.config")
 local async = require("org_markdown.utils.async")
 local editing = require("org_markdown.utils.editing")
-local tree = require("org_markdown.utils.tree")
 
 local M = {}
 
@@ -524,75 +523,6 @@ function M.set_window_footer(win, footer)
 	end
 end
 
-function M.append_lines(filepath, lines)
-	local buf_lines = M.read_lines(filepath)
-	for _, line in ipairs(lines) do
-		table.insert(buf_lines, line)
-	end
-	M.write_lines(filepath, buf_lines)
-end
-
--- Helper: Adjust heading levels to be children of given base level
-function M.adjust_heading_levels(lines, base_level)
-	local adjusted = {}
-	for _, line in ipairs(lines) do
-		local hashes, title = line:match("^(#+)%s+(.*)")
-		if hashes and title then
-			local new_level = string.rep("#", base_level + #hashes)
-			table.insert(adjusted, new_level .. " " .. title)
-		else
-			table.insert(adjusted, line)
-		end
-	end
-	return adjusted
-end
-
--- Helper: Find heading range (start line, heading level, end line of subtree)
--- Note: Returns insert_idx as the line AFTER the heading block (for insertion)
-function M.find_heading_range(lines, heading_text)
-	local start_line, level, end_line = tree.find_heading(lines, heading_text)
-	if start_line then
-		-- Return end_line + 1 for insertion point (matches old behavior)
-		return start_line, level, end_line + 1
-	end
-	return nil, nil, nil
-end
-
--- Main function
-function M.insert_under_heading(filepath, heading_text, content_lines)
-	local lines = M.read_lines(filepath)
-
-	local start_idx, base_level, insert_idx
-
-	-- Only try to find heading if one is specified
-	if heading_text and heading_text ~= "" then
-		start_idx, base_level, insert_idx = M.find_heading_range(lines, heading_text)
-	end
-
-	if start_idx and insert_idx then
-		local adjusted_content = M.adjust_heading_levels(content_lines, base_level)
-
-		-- Insert content before next sibling heading (or end of file)
-		for i = #adjusted_content, 1, -1 do
-			table.insert(lines, insert_idx, adjusted_content[i])
-		end
-	else
-		-- Heading not found or not specified — add content at EOF
-		if #lines > 0 and lines[#lines] ~= "" then
-			table.insert(lines, "")
-		end
-
-		-- Only add heading if one was specified
-		if heading_text and heading_text ~= "" then
-			table.insert(lines, "# " .. heading_text)
-		end
-
-		vim.list_extend(lines, content_lines)
-	end
-
-	M.write_lines(filepath, lines)
-end
-
 --- Removes trailing empty or whitespace-only lines from a list of lines
 --- @param lines string[]
 --- @return string[]: a new table with trailing whitespace removed
@@ -607,23 +537,45 @@ function M.trim_trailing_whitespace(lines)
 	return trimmed
 end
 
---- Extract all headings from a file
+--- Collect headings recursively from document tree
+--- @param node table Document node
+--- @param headings table Output array to append to
+local function collect_headings_from_tree(node, headings)
+	if node.type == "heading" then
+		-- Use parsed text if available, otherwise extract from raw_heading
+		local text = (node.parsed and node.parsed.text) or ""
+		if text == "" and node.raw_heading then
+			-- Fallback: extract text from raw heading
+			local _, raw_text = node.raw_heading:match("^(#+)%s*(.*)")
+			text = raw_text or ""
+		end
+
+		table.insert(headings, {
+			text = text,
+			level = node.level,
+			line_num = node.start_line,
+		})
+	end
+
+	-- Recurse into children
+	for _, child in ipairs(node.children or {}) do
+		collect_headings_from_tree(child, headings)
+	end
+end
+
+--- Extract all headings from a file using document model
 --- @param filepath string Path to file
 --- @return table Array of {text, level, line_num}
 function M.extract_headings(filepath)
+	local document = require("org_markdown.utils.document")
 	local lines = M.read_lines(filepath)
-	local headings = {}
-
-	for i, line in ipairs(lines) do
-		local level, text = line:match("^(#+)%s*(.*)")
-		if level then
-			table.insert(headings, {
-				text = text,
-				level = #level,
-				line_num = i,
-			})
-		end
+	if not lines then
+		return {}
 	end
+
+	local root = document.parse(lines)
+	local headings = {}
+	collect_headings_from_tree(root, headings)
 
 	return headings
 end

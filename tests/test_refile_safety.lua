@@ -4,6 +4,7 @@ local T = MiniTest.new_set()
 -- Test utilities
 local utils = require("org_markdown.utils.utils")
 local refile = require("org_markdown.refile")
+local document = require("org_markdown.utils.document")
 
 -- Helper function to create a temporary test file
 local function create_test_file(filename, lines)
@@ -138,8 +139,13 @@ T["refile safety - destination write is verified"] = function()
 		"Task content",
 	}
 
-	-- Append lines
-	utils.append_lines(dest_file, lines_to_append)
+	-- Append lines using document model
+	local root = document.read_from_file(dest_file)
+	local append_root = document.parse(lines_to_append)
+	for _, child in ipairs(append_root.children) do
+		document.insert_child(root, child)
+	end
+	document.write_to_file(dest_file, root)
 
 	-- Read back and verify
 	local result = utils.read_lines(dest_file)
@@ -162,14 +168,14 @@ T["refile safety - register stores content for undo"] = function()
 	MiniTest.expect.equality(retrieved, content)
 end
 
-T["refile safety - append_lines handles errors gracefully"] = function()
-	-- Test that append_lines errors are catchable
+T["refile safety - document write handles errors gracefully"] = function()
+	-- Test that document write errors are catchable
 	local invalid_path = "/this/path/does/not/exist/file.md"
 
-	local lines = { "content" }
+	local root = document.parse({ "## Test" })
 
-	-- This should error
-	local ok, err = pcall(utils.append_lines, invalid_path, lines)
+	-- This should error (can't write to non-existent directory)
+	local ok, err = pcall(document.write_to_file, invalid_path, root)
 
 	-- We expect this to fail
 	MiniTest.expect.equality(ok, false)
@@ -322,8 +328,13 @@ T["integration - write and verify cycle"] = function()
 		"Important content",
 	}
 
-	-- 1. Write
-	local write_ok = pcall(utils.append_lines, dest_file, lines_to_refile)
+	-- 1. Write using document model
+	local root = document.read_from_file(dest_file)
+	local refile_root = document.parse(lines_to_refile)
+	for _, child in ipairs(refile_root.children) do
+		document.insert_child(root, child)
+	end
+	local write_ok = pcall(document.write_to_file, dest_file, root)
 	MiniTest.expect.equality(write_ok, true)
 
 	-- 2. Verify (read back last lines)

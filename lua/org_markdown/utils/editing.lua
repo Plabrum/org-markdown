@@ -49,10 +49,6 @@ function M.cycle_status_inline(line, states)
 
 	local next_state = states[(index % #states) + 1]
 
-	-- Check if transitioning TO DONE state
-	local archive = require("org_markdown.archive")
-	local should_timestamp = (next_state == "DONE" and current ~= "DONE")
-
 	-- Preserve spacing: if rest starts with content, add a space; otherwise keep as-is
 	local new_rest = rest
 	if rest and rest ~= "" and not rest:match("^%s") then
@@ -61,12 +57,65 @@ function M.cycle_status_inline(line, states)
 
 	local new_line = string.format("%s %s%s", hashes, next_state, new_rest)
 
-	-- Add timestamp if cycling TO DONE
-	if should_timestamp and archive.is_enabled() then
-		new_line = archive.add_completed_timestamp(new_line)
-	end
+	-- Note: COMPLETED_AT is now handled by cycle_status_with_document
+	-- which adds it at the bottom of the node content
 
 	return { new_line }
+end
+
+--- Cycle status using document tree model
+--- Automatically adds COMPLETED_AT at bottom of node content when cycling to DONE
+--- @param bufnr number Buffer number (0 for current)
+--- @return boolean success
+function M.cycle_status_with_document(bufnr)
+	bufnr = bufnr or 0
+	local lines = vim.api.nvim_buf_get_lines(bufnr, 0, -1, false)
+	local cursor = vim.api.nvim_win_get_cursor(0)
+	local current_line = cursor[1]
+
+	-- Parse document into tree
+	local document = require("org_markdown.utils.document")
+	local root = document.parse(lines)
+
+	-- Find node at cursor
+	local node = document.find_node_at_line(root, current_line)
+	if not node or node.type ~= "heading" then
+		return false
+	end
+
+	-- Get current state
+	local current_state = node.parsed.state
+	if not current_state then
+		return false
+	end
+
+	-- Find next state in cycle
+	local states = config.status_states
+	local index = nil
+	for i, state in ipairs(states) do
+		if state == current_state then
+			index = i
+			break
+		end
+	end
+
+	if not index then
+		return false
+	end
+
+	local next_state = states[(index % #states) + 1]
+
+	-- Mutate node (this auto-handles COMPLETED_AT)
+	node:set_state(next_state)
+
+	-- Serialize and diff
+	local new_lines = document.serialize(root)
+	local changes = document.diff(lines, new_lines)
+
+	-- Apply minimal changes
+	document.apply_to_buffer(bufnr, changes)
+
+	return true
 end
 
 function M.continue_todo(line)
@@ -129,12 +178,22 @@ function M.setup_editing_keybinds(bufnr)
 
 	-- NORMAL: <CR> cycles checkbox/status, else fall back to default <CR>
 	vim.keymap.set("n", "<CR>", function()
+		-- Try checkbox first (simple inline edit)
 		local did = M.edit_line_at_cursor(function(line)
-			return M.cycle_checkbox_inline(line, config.checkbox_states) or M.cycle_status_inline(line, config.status_states)
+			return M.cycle_checkbox_inline(line, config.checkbox_states)
 		end)
-		if not did then
-			vim.api.nvim_feedkeys(vim.api.nvim_replace_termcodes("<CR>", true, false, true), "n", false)
+		if did then
+			return
 		end
+
+		-- Try status cycling with document model (handles COMPLETED_AT at node bottom)
+		did = M.cycle_status_with_document(bufnr)
+		if did then
+			return
+		end
+
+		-- Fall back to default <CR>
+		vim.api.nvim_feedkeys(vim.api.nvim_replace_termcodes("<CR>", true, false, true), "n", false)
 	end, { desc = "org-markdown: cycle or enter", buffer = bufnr })
 
 	-- NORMAL: <Tab> cycles heading folds if enabled, else cycles checkbox/status
@@ -146,9 +205,12 @@ function M.setup_editing_keybinds(bufnr)
 			if not did_fold then
 				-- Fallback to checkbox/status cycling
 				vim.notify("Fold: fallback to checkbox/status cycling", vim.log.levels.DEBUG)
-				M.edit_line_at_cursor(function(line)
-					return M.cycle_checkbox_inline(line, config.checkbox_states) or M.cycle_status_inline(line, config.status_states)
+				local did = M.edit_line_at_cursor(function(line)
+					return M.cycle_checkbox_inline(line, config.checkbox_states)
 				end)
+				if not did then
+					M.cycle_status_with_document(bufnr)
+				end
 			end
 		end, { desc = "org-markdown: cycle fold or todo state", buffer = bufnr })
 	end

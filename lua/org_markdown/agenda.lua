@@ -1,8 +1,7 @@
 -- org_markdown/agenda/calendar.lua + tasks.lua
 local config = require("org_markdown.config")
 local utils = require("org_markdown.utils.utils")
-local parser = require("org_markdown.utils.parser")
-local formatter = require("org_markdown.utils.formatter")
+local document = require("org_markdown.utils.document")
 local queries = require("org_markdown.utils.queries")
 local editing = require("org_markdown.utils.editing")
 local agenda_formatters = require("org_markdown.agenda_formatters")
@@ -10,6 +9,13 @@ local datetime = require("org_markdown.utils.datetime")
 local frontmatter = require("org_markdown.utils.frontmatter")
 
 local M = {}
+
+-- Module-level state for agenda views
+local state = {
+	fold_states = {}, -- Fold states by view_id: { view_id = { item = is_folded } }
+	current_view_id = nil, -- Currently displayed view
+	line_to_item = {}, -- Current line_to_item mapping
+}
 
 -- Color palette mapping color names to hex values
 local COLOR_PALETTE = {
@@ -54,8 +60,9 @@ local function find_view(view_id)
 	return view
 end
 
--- Helper function to cycle TODO state in a file
+-- Helper function to cycle TODO state in a file using document model
 -- Returns new_line, new_state if successful, nil otherwise
+-- Uses document model for status cycling to enable COMPLETED_AT handling
 local function cycle_todo_in_file(item)
 	local lines = utils.read_lines(item.file)
 	local line = lines[item.line]
@@ -63,20 +70,54 @@ local function cycle_todo_in_file(item)
 		return nil
 	end
 
-	-- Try to cycle the line
+	-- Try checkbox first (simple line-based, no document model needed)
 	local new_lines = editing.cycle_checkbox_inline(line, config.checkbox_states)
-		or editing.cycle_status_inline(line, config.status_states)
-
 	if new_lines and new_lines[1] then
 		lines[item.line] = new_lines[1]
 		utils.write_lines(item.file, lines)
-
-		-- Parse the new line to get the new state
-		local new_heading = parser.parse_headline(new_lines[1])
-		return new_lines[1], new_heading and new_heading.state
+		return new_lines[1], nil -- Checkboxes don't have heading state
 	end
 
-	return nil
+	-- For status cycling, use document model (enables COMPLETED_AT)
+	local root = document.parse(lines)
+	local node = document.find_node_at_line(root, item.line)
+
+	if not node or node.type ~= "heading" then
+		return nil
+	end
+
+	local current_state = node.parsed and node.parsed.state
+	if not current_state then
+		return nil
+	end
+
+	-- Find next state in cycle
+	local states = config.status_states
+	local index = nil
+	for i, state in ipairs(states) do
+		if state == current_state then
+			index = i
+			break
+		end
+	end
+
+	if not index then
+		return nil
+	end
+
+	local next_state = states[(index % #states) + 1]
+
+	-- Mutate node (this auto-handles COMPLETED_AT via node:set_state)
+	node:set_state(next_state)
+
+	-- Serialize and write
+	document.write_to_file(item.file, root)
+
+	-- Re-read the file to get the actual new heading line
+	local updated_lines = utils.read_lines(item.file)
+	local new_heading_line = updated_lines[item.line]
+
+	return new_heading_line, next_state
 end
 
 local function highlight_states(buf, lines)
@@ -107,37 +148,95 @@ local function scan_files(file_patterns)
 	for _, file in ipairs(files) do
 		local lines = utils.read_lines(file)
 		local display_name = frontmatter.get_display_name(file, lines)
+		local root = document.parse(lines)
 
-		for i, line in ipairs(lines) do
-			local heading = parser.parse_headline(line)
-			if heading then
-				-- Create item structure (used by all arrays)
+		-- Recursive helper to collect headings from document tree
+		-- Now builds hierarchical items with children array
+		local function collect_headings(node, depth)
+			depth = depth or 0
+
+			if node.type == "heading" and node.parsed then
+				local p = node.parsed
 				local item = {
-					title = heading.text,
-					state = heading.state,
-					priority = heading.priority,
-					date = heading.tracked,
-					start_time = heading.start_time,
-					end_time = heading.end_time,
-					all_day = heading.all_day,
-					line = i,
+					title = p.text,
+					state = p.state,
+					priority = p.priority,
+					date = p.tracked,
+					start_time = p.start_time,
+					end_time = p.end_time,
+					all_day = p.all_day,
+					line = node.start_line,
 					file = file,
-					tags = heading.tags,
+					tags = p.tags,
 					source = display_name,
+					-- NEW: Hierarchy fields
+					children = {},
+					depth = depth,
+					node = node,
 				}
 
-				-- Add to 'all' array for every heading
-				table.insert(agenda_items.all, item)
-
-				-- Add to 'tasks' array if it has a state
-				if heading.state then
-					table.insert(agenda_items.tasks, item)
+				-- Recursively collect children
+				for _, child in ipairs(node.children or {}) do
+					local child_item = collect_headings(child, depth + 1)
+					if child_item then
+						table.insert(item.children, child_item)
+					end
 				end
 
-				-- Add to 'calendar' array if it has a tracked date
-				if heading.tracked then
-					table.insert(agenda_items.calendar, item)
+				return item
+			elseif node.type == "document" then
+				-- Document root: collect all top-level headings
+				local top_level_items = {}
+				for _, child in ipairs(node.children or {}) do
+					local item = collect_headings(child, 0)
+					if item then
+						table.insert(top_level_items, item)
+					end
 				end
+				return top_level_items
+			end
+		end
+
+		-- Collect top-level items from this file
+		local file_items = collect_headings(root)
+
+		-- Add only top-level items to arrays (children are preserved in item.children)
+		for _, item in ipairs(file_items or {}) do
+			-- Add to 'all' array for every heading
+			table.insert(agenda_items.all, item)
+
+			-- Add to 'tasks' array if it or any descendant has a state
+			local function has_state_recursive(it)
+				if it.state then
+					return true
+				end
+				for _, child in ipairs(it.children or {}) do
+					if has_state_recursive(child) then
+						return true
+					end
+				end
+				return false
+			end
+
+			if has_state_recursive(item) then
+				table.insert(agenda_items.tasks, item)
+			end
+
+			-- Add to 'calendar' array if it or any descendant has a tracked date
+			local function has_date_recursive(it)
+				if it.date then
+					return true
+				end
+				for _, child in ipairs(it.children or {}) do
+					if has_date_recursive(child) then
+						return true
+					end
+				end
+				return false
+			end
+
+			if has_date_recursive(item) then
+				table.insert(agenda_items.calendar, item)
 			end
 		end
 	end
@@ -214,6 +313,39 @@ local function filter_item(item, filters)
 	return true
 end
 
+-- Recursively filter an item and its children
+-- Returns filtered item with filtered children, or nil if item doesn't match
+local function filter_item_recursive(item, filters)
+	if not filters then
+		return item
+	end
+
+	-- Check if parent matches filter
+	if not filter_item(item, filters) then
+		-- Parent doesn't match: skip entire subtree (hide orphaned children)
+		return nil
+	end
+
+	-- Parent matches: recursively filter children
+	if item.children and #item.children > 0 then
+		local filtered_children = {}
+		for _, child in ipairs(item.children) do
+			local filtered_child = filter_item_recursive(child, filters)
+			if filtered_child then
+				table.insert(filtered_children, filtered_child)
+			end
+		end
+
+		-- Create copy of item with filtered children
+		local filtered_item = vim.tbl_extend("force", {}, item)
+		filtered_item.children = filtered_children
+		return filtered_item
+	end
+
+	-- Leaf item that matches
+	return item
+end
+
 -- Apply filters to a list of items
 local function apply_filters(items, filters)
 	if not filters then
@@ -222,8 +354,10 @@ local function apply_filters(items, filters)
 
 	local filtered = {}
 	for _, item in ipairs(items) do
-		if filter_item(item, filters) then
-			table.insert(filtered, item)
+		-- Use recursive filtering to handle hierarchy
+		local filtered_item = filter_item_recursive(item, filters)
+		if filtered_item then
+			table.insert(filtered, filtered_item)
 		end
 	end
 	return filtered
@@ -393,12 +527,16 @@ local formatters = {
 }
 
 -- Render a view from grouped items
-local function render_view(groups, view_def)
+local function render_view(groups, view_def, view_id)
 	local lines = {}
 	local line_to_item = {}
 
 	local format_name = (view_def.display and view_def.display.format) or "timeline"
 	local fmt = formatters[format_name] or formatters.timeline
+
+	-- Get fold states for this view
+	state.fold_states[view_id] = state.fold_states[view_id] or {}
+	local fold_states = state.fold_states[view_id]
 
 	for _, group in ipairs(groups) do
 		if group.key then
@@ -413,15 +551,18 @@ local function render_view(groups, view_def)
 			end
 		end
 
+		-- Render items using tree formatter (hierarchical)
 		for _, item in ipairs(group.items) do
-			local item_line = group.key and fmt.grouped(item) or fmt.flat(item)
-			-- For multi-line formatters, split and add each line
-			for line in item_line:gmatch("[^\n]+") do
-				table.insert(lines, line)
-				-- Only store item on first line
-				if not line_to_item[#lines - 1] or line_to_item[#lines - 1] ~= item then
-					line_to_item[#lines] = item
-				end
+			local tree_result = agenda_formatters.format_tree(item, {
+				depth = 0,
+				style = format_name,
+				fold_states = fold_states,
+			})
+
+			for _, entry in ipairs(tree_result) do
+				table.insert(lines, entry.line)
+				-- Map line to the actual item it represents (could be parent or child)
+				line_to_item[#lines] = entry.item
 			end
 		end
 
@@ -459,7 +600,66 @@ local function process_view(view_id, view_def)
 	local groups = group_items(items, view_def.group_by)
 
 	-- 3. Render
-	return render_view(groups, view_def)
+	return render_view(groups, view_def, view_id)
+end
+
+-- Refresh the current view (re-process and re-render)
+function M.refresh_current_view()
+	if not state.current_view_id or not state.current_buf or not state.current_win then
+		return
+	end
+
+	local view_id = state.current_view_id
+	local view_def = find_view(view_id)
+	if not view_def then
+		return
+	end
+
+	-- Re-process the view
+	local lines, line_to_item = process_view(view_id, view_def)
+
+	-- Update state
+	state.line_to_item = line_to_item
+
+	-- Update buffer
+	vim.bo[state.current_buf].modifiable = true
+	vim.api.nvim_buf_set_lines(state.current_buf, 0, -1, false, lines)
+	highlight_states(state.current_buf, lines)
+	vim.bo[state.current_buf].modifiable = false
+end
+
+-- Cycle fold state for item at cursor
+function M.cycle_agenda_fold()
+	if not state.current_win or not state.current_buf then
+		return
+	end
+
+	local cursor = vim.api.nvim_win_get_cursor(state.current_win)
+	local line_num = cursor[1]
+	local item = state.line_to_item[line_num]
+
+	if not item or not item.children or #item.children == 0 then
+		-- Can't fold leaf items or non-items
+		return
+	end
+
+	-- Initialize fold states for this view if needed
+	local view_id = state.current_view_id
+	state.fold_states[view_id] = state.fold_states[view_id] or {}
+
+	-- Toggle fold state
+	local is_folded = state.fold_states[view_id][item] or false
+	state.fold_states[view_id][item] = not is_folded
+
+	-- Re-render the view
+	M.refresh_current_view()
+
+	-- Restore cursor position (refresh might change line count)
+	if vim.api.nvim_win_is_valid(state.current_win) then
+		local new_line_count = vim.api.nvim_buf_line_count(state.current_buf)
+		local new_line_num = math.min(line_num, new_line_count)
+		vim.api.nvim_win_set_cursor(state.current_win, { new_line_num, 0 })
+	end
 end
 
 -- Generic view function that works with any view definition
@@ -472,16 +672,24 @@ function M.show_view(view_id)
 
 	local lines, line_to_item = process_view(view_id, view_def)
 
+	-- Store state for refresh and fold cycling
+	state.current_view_id = view_id
+	state.line_to_item = line_to_item
+
 	local buf, win = utils.open_window({
 		title = "Agenda - " .. (view_def.title or view_id),
 		method = config.agendas.window_method,
 		filetype = "markdown",
-		footer = "status cycle <tab> | <CR> jump | q close",
+		footer = "fold <tab> | <CR> jump | q close",
 	})
 
 	vim.api.nvim_buf_set_lines(buf, 0, -1, false, lines)
 	highlight_states(buf, lines)
 	vim.bo[buf].modifiable = false
+
+	-- Store buffer and window in state for refresh
+	state.current_buf = buf
+	state.current_win = win
 
 	-- Configure line wrapping with indentation for continuation lines
 	vim.wo[win].wrap = true
@@ -502,45 +710,9 @@ function M.show_view(view_id)
 		end
 	end, { buffer = buf, silent = true })
 
-	-- Add keymap to cycle TODO state
+	-- Add keymap to cycle fold state
 	vim.keymap.set("n", "<Tab>", function()
-		local cursor = vim.api.nvim_win_get_cursor(win)
-		local line_num = cursor[1]
-		local item = line_to_item[line_num]
-		if not item then
-			return
-		end
-
-		local new_line, new_state = cycle_todo_in_file(item)
-		if not new_line then
-			return
-		end
-
-		-- Update the item with new state
-		item.state = new_state
-
-		-- Update just this line with the new state
-		local format_name = (view_def.display and view_def.display.format) or "timeline"
-		local fmt = formatters[format_name] or formatters.timeline
-		local formatter_fn = view_def.group_by and fmt.grouped or fmt.flat
-		local new_display_line = formatter_fn(item)
-
-		-- Handle multi-line formatters (just take first line for now)
-		local first_line = new_display_line:match("[^\n]+") or new_display_line
-
-		vim.bo[buf].modifiable = true
-		vim.api.nvim_buf_set_lines(buf, line_num - 1, line_num, false, { first_line })
-
-		-- Re-highlight just this line
-		local status_states = config.status_states
-		for _, state in ipairs(status_states) do
-			local state_start, state_end = first_line:find(state)
-			if state_start then
-				local hl_group_name = "OrgStatus_" .. state
-				vim.api.nvim_buf_add_highlight(buf, -1, hl_group_name, line_num - 1, state_start - 1, state_end)
-			end
-		end
-		vim.bo[buf].modifiable = false
+		M.cycle_agenda_fold()
 	end, { buffer = buf, silent = true })
 end
 
@@ -555,6 +727,12 @@ refresh_tab_content = function(buf, win, tab_index, view_id)
 	end
 
 	local lines, line_to_item = process_view(view_id, view_def)
+
+	-- Update module state for fold cycling
+	state.current_view_id = view_id
+	state.line_to_item = line_to_item
+	state.current_buf = buf
+	state.current_win = win
 
 	vim.bo[buf].modifiable = true
 	vim.api.nvim_buf_set_lines(buf, 0, -1, false, lines)
@@ -620,7 +798,7 @@ function M.show_tabbed_agenda()
 			utils.set_window_title(win, new_title)
 		end,
 		get_footer = function(view_id, index, total)
-			return string.format("Tab [%d/%d] | status cycle <tab> | agenda cycle ] | <CR> jump | q close", index, total)
+			return string.format("Tab [%d/%d] | fold <tab> | agenda cycle ] | <CR> jump | q close", index, total)
 		end,
 		memory_id = "agenda",
 	})
@@ -639,48 +817,7 @@ function M.show_tabbed_agenda()
 	end, { buffer = buf, silent = true })
 
 	vim.keymap.set("n", "<Tab>", function()
-		local cursor = vim.api.nvim_win_get_cursor(win)
-		local line_num = cursor[1]
-		local item = vim.b[buf].agenda_line_to_item[line_num]
-		if not item then
-			return
-		end
-
-		local new_line, new_state = cycle_todo_in_file(item)
-		if not new_line then
-			return
-		end
-
-		-- Update the item with new state
-		item.state = new_state
-
-		-- Get current view for formatting
-		local current_tab = vim.b[buf].agenda_current_tab or 1
-		local ordered_views = config.get_ordered_views()
-		local current_view = ordered_views[current_tab]
-
-		-- Update just this line with the new state
-		local format_name = (current_view.display and current_view.display.format) or "timeline"
-		local fmt = formatters[format_name] or formatters.timeline
-		local formatter_fn = current_view.group_by and fmt.grouped or fmt.flat
-		local new_display_line = formatter_fn(item)
-
-		-- Handle multi-line formatters (just take first line for now)
-		local first_line = new_display_line:match("[^\n]+") or new_display_line
-
-		vim.bo[buf].modifiable = true
-		vim.api.nvim_buf_set_lines(buf, line_num - 1, line_num, false, { first_line })
-
-		-- Re-highlight just this line
-		local status_states = config.status_states
-		for _, state in ipairs(status_states) do
-			local state_start, state_end = first_line:find(state)
-			if state_start then
-				local hl_group_name = "OrgStatus_" .. state
-				vim.api.nvim_buf_add_highlight(buf, -1, hl_group_name, line_num - 1, state_start - 1, state_end)
-			end
-		end
-		vim.bo[buf].modifiable = false
+		M.cycle_agenda_fold()
 	end, { buffer = buf, silent = true })
 
 	-- Load content for the current tab (after setup has restored the saved tab)

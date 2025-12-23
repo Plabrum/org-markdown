@@ -3,6 +3,11 @@
 --- Separate from parser.lua which handles semantic parsing (state, priority, tags, dates)
 local M = {}
 
+-- Import patterns from parser (lazy to avoid circular dependency)
+local function get_patterns()
+	return require("org_markdown.utils.parser").PATTERNS
+end
+
 -- ============================================================================
 -- Primitives (work with single lines)
 -- ============================================================================
@@ -11,7 +16,7 @@ local M = {}
 --- @param line string
 --- @return number|nil Level (1-6), or nil if not a heading
 function M.get_level(line)
-	local hashes = line:match("^(#+)%s+")
+	local hashes = line:match(get_patterns().heading)
 	return hashes and #hashes or nil
 end
 

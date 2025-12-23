@@ -1,9 +1,9 @@
 local config = require("org_markdown.config")
 local utils = require("org_markdown.utils.utils")
-local parser = require("org_markdown.utils.parser")
 local datetime = require("org_markdown.utils.datetime")
 local queries = require("org_markdown.utils.queries")
 local tree = require("org_markdown.utils.tree")
+local document = require("org_markdown.utils.document")
 
 local M = {}
 local auto_archive_timer = nil
@@ -14,87 +14,39 @@ function M.is_enabled()
 	return config.archive and config.archive.enabled
 end
 
---- Add COMPLETED_AT timestamp to a heading line
---- @param line string The heading line
---- @return string Modified line with timestamp
-function M.add_completed_timestamp(line)
-	-- Check if line already has COMPLETED_AT timestamp
-	if line:match("COMPLETED_AT:") then
-		return line
+--- Collect archivable nodes recursively from document tree
+--- @param node table Document node
+--- @param filepath string File path
+--- @param today table Today's date
+--- @param threshold_days number Days before archiving
+--- @param archivable table Output array
+local function collect_archivable_nodes(node, filepath, today, threshold_days, archivable)
+	-- Check if this is a DONE heading
+	if node:is_heading() and node:has_state("DONE") then
+		-- Get completion date (from properties or legacy format)
+		local completed_date = node:get_completed_at_date()
+		if completed_date then
+			-- Calculate days since completion
+			local days_diff = datetime.days_between(completed_date, today)
+
+			-- Archive if older than threshold
+			if days_diff >= threshold_days then
+				table.insert(archivable, {
+					filepath = filepath,
+					line_num = node.start_line,
+					line = node.raw_heading,
+					heading_level = node.level,
+					completed_date = completed_date,
+					days_old = days_diff,
+				})
+			end
+		end
 	end
 
-	-- Get today's date
-	local today = datetime.today()
-	local date_str = datetime.to_iso_string(today)
-
-	-- Parse the heading to extract components
-	local parsed = parser.parse_headline(line)
-	if not parsed then
-		return line
+	-- Recurse into children
+	for _, child in ipairs(node.children or {}) do
+		collect_archivable_nodes(child, filepath, today, threshold_days, archivable)
 	end
-
-	-- Extract the heading prefix (## or ### etc) and state
-	local hashes, state = line:match("^(#+)%s+(%u[%u_%-]*)")
-	if not (hashes and state) then
-		return line
-	end
-
-	-- Build the new line by inserting COMPLETED_AT before tags
-	local parts = {}
-	table.insert(parts, hashes)
-	table.insert(parts, state)
-
-	-- Add priority if present
-	if parsed.priority then
-		table.insert(parts, string.format("[#%s]", parsed.priority))
-	end
-
-	-- Add text
-	if parsed.text and parsed.text ~= "" then
-		table.insert(parts, parsed.text)
-	end
-
-	-- Add tracked date if present
-	if parsed.tracked then
-		table.insert(parts, string.format("<%s>", parsed.tracked))
-	end
-
-	-- Add untracked date if present
-	if parsed.untracked then
-		table.insert(parts, string.format("[%s]", parsed.untracked))
-	end
-
-	-- Add COMPLETED_AT timestamp
-	table.insert(parts, string.format("COMPLETED_AT: [%s]", date_str))
-
-	-- Add tags if present
-	if parsed.tags and #parsed.tags > 0 then
-		table.insert(parts, ":" .. table.concat(parsed.tags, ":") .. ":")
-	end
-
-	return table.concat(parts, " ")
-end
-
---- Extract COMPLETED_AT date from heading line
---- @param line string The heading line
---- @return table|nil Date table {year, month, day} or nil
-function M.extract_completed_date(line)
-	local date_str = line:match("COMPLETED_AT: %[(%d%d%d%d%-%d%d%-%d%d)%]")
-	if not date_str then
-		return nil
-	end
-
-	-- Parse ISO date string YYYY-MM-DD
-	local year, month, day = date_str:match("(%d%d%d%d)%-(%d%d)%-(%d%d)")
-	if not (year and month and day) then
-		return nil
-	end
-
-	return {
-		year = tonumber(year),
-		month = tonumber(month),
-		day = tonumber(day),
-	}
 end
 
 --- Find all DONE headings older than threshold
@@ -103,6 +55,7 @@ end
 function M.find_archivable_headings(threshold_days)
 	local archivable = {}
 	local today = datetime.today()
+	local document = require("org_markdown.utils.document")
 
 	-- Get all markdown files
 	local files = queries.find_markdown_files()
@@ -112,33 +65,11 @@ function M.find_archivable_headings(threshold_days)
 		if not filepath:match("%.archive%.md$") then
 			local lines = utils.read_lines(filepath)
 			if lines then
-				for line_num, line in ipairs(lines) do
-					-- Check if it's a heading with DONE state
-					local parsed = parser.parse_headline(line)
-					if parsed and parsed.state == "DONE" then
-						-- Extract completion date
-						local completed_date = M.extract_completed_date(line)
-						if completed_date then
-							-- Calculate days since completion
-							local days_diff = datetime.days_between(completed_date, today)
+				-- Parse document into tree
+				local root = document.parse(lines)
 
-							-- Archive if older than threshold
-							if days_diff >= threshold_days then
-								-- Get heading level
-								local heading_level = tree.get_level(line) or 2
-
-								table.insert(archivable, {
-									filepath = filepath,
-									line_num = line_num,
-									line = line,
-									heading_level = heading_level,
-									completed_date = completed_date,
-									days_old = days_diff,
-								})
-							end
-						end
-					end
-				end
+				-- Collect archivable nodes from tree
+				collect_archivable_nodes(root, filepath, today, threshold_days, archivable)
 			end
 		end
 	end
@@ -178,21 +109,34 @@ function M.archive_heading(filepath, heading_info)
 		table.insert(block_lines, lines[i])
 	end
 
-	-- Create archive file if it doesn't exist
+	-- Load or create archive document
+	local archive_root
 	if vim.fn.filereadable(archive_path) == 0 then
-		local header_lines = {
+		-- Create new document with header
+		archive_root = document.parse({
 			"<!-- AUTO-ARCHIVED: Completed tasks moved from " .. vim.fn.fnamemodify(filepath, ":t") .. " -->",
 			"",
-		}
-		utils.write_lines(archive_path, header_lines)
+		})
+	else
+		archive_root = document.read_from_file(archive_path)
 	end
 
-	-- Append to archive file
-	local ok, err = pcall(function()
-		-- Add a blank line before the archived heading for readability
-		utils.append_lines(archive_path, { "" })
-		utils.append_lines(archive_path, block_lines)
-	end)
+	-- Parse block lines and append to archive
+	local block_root = document.parse(block_lines)
+
+	-- Add blank line before archived content
+	table.insert(archive_root.content_lines, "")
+
+	-- Append headings and content
+	for _, child in ipairs(block_root.children) do
+		document.insert_child(archive_root, child)
+	end
+	for _, line in ipairs(block_root.content_lines) do
+		table.insert(archive_root.content_lines, line)
+	end
+
+	-- Write archive file
+	local ok, err = pcall(document.write_to_file, archive_path, archive_root)
 
 	if not ok then
 		return false, "Failed to write to archive: " .. tostring(err)
@@ -207,20 +151,32 @@ function M.archive_heading(filepath, heading_info)
 	-- Store in register "r" for undo
 	vim.fn.setreg("r", table.concat(block_lines, "\n"))
 
-	-- Delete from source file
+	-- Delete from source file using document model
+	-- Parse source into tree
+	local source_root = document.parse(lines)
+
+	-- Find the node at the archived heading's line
+	local node_to_remove = document.find_node_at_line(source_root, start_line)
+
+	if node_to_remove and node_to_remove.type == "heading" then
+		-- Find parent and remove the node
+		local parent = document.find_parent(source_root, node_to_remove)
+		if parent then
+			document.remove_child(parent, node_to_remove)
+		end
+	end
+
+	-- Serialize and write/apply
+	local new_lines = document.serialize(source_root)
+
 	-- Check if file is open in a buffer
 	local bufnr = vim.fn.bufnr(filepath)
 	if bufnr ~= -1 then
-		-- File is open, use buffer API
-		vim.api.nvim_buf_set_lines(bufnr, start_line - 1, end_line, false, {})
+		-- File is open, apply minimal diff
+		local changes = document.diff(lines, new_lines)
+		document.apply_to_buffer(bufnr, changes)
 	else
-		-- File is closed, manipulate directly
-		local new_lines = {}
-		for i, line in ipairs(lines) do
-			if i < start_line or i > end_line then
-				table.insert(new_lines, line)
-			end
-		end
+		-- File is closed, write directly
 		utils.write_lines(filepath, new_lines)
 	end
 

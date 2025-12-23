@@ -5,6 +5,7 @@ local picker = require("org_markdown.utils.picker")
 local async = require("org_markdown.utils.async")
 local frontmatter = require("org_markdown.utils.frontmatter")
 local tree = require("org_markdown.utils.tree")
+local document = require("org_markdown.utils.document")
 
 local M = {}
 
@@ -113,24 +114,39 @@ function M.to_file()
 			-- TRANSACTION ORDER: write → verify → delete
 			-- This prevents data loss if write fails
 
-			-- 1. Write to destination FIRST
-			local write_ok, write_err = pcall(utils.append_lines, item.value, selection.lines)
+			-- 1. Load destination document
+			local dest_root = document.read_from_file(item.value)
+
+			-- 2. Parse refiled content into nodes
+			local refile_root = document.parse(selection.lines)
+
+			-- 3. Append to destination root
+			for _, child in ipairs(refile_root.children) do
+				document.insert_child(dest_root, child)
+			end
+			-- Append non-heading content
+			for _, line in ipairs(refile_root.content_lines) do
+				table.insert(dest_root.content_lines, line)
+			end
+
+			-- 4. Write to destination FIRST
+			local write_ok, write_err = pcall(document.write_to_file, item.value, dest_root)
 			if not write_ok then
 				vim.notify("Refile failed: " .. tostring(write_err), vim.log.levels.ERROR)
 				return -- Source untouched!
 			end
 
-			-- 2. Verify write succeeded
+			-- 5. Verify write succeeded
 			local verify_ok, verify_err = verify_refile_write(item.value, selection.lines)
 			if not verify_ok then
 				vim.notify("Refile verification failed: " .. verify_err, vim.log.levels.ERROR)
 				return -- Source still untouched
 			end
 
-			-- 3. Store in register for undo (before delete!)
+			-- 6. Store in register for undo (before delete!)
 			vim.fn.setreg("r", table.concat(selection.lines, "\n"))
 
-			-- 4. NOW safe to delete from source
+			-- 7. NOW safe to delete from source
 			vim.api.nvim_buf_set_lines(0, selection.start_line, selection.end_line, false, {})
 
 			vim.notify("Refiled to " .. item.value .. ' (undo: press "rp in target file)')
@@ -166,13 +182,47 @@ function M.to_heading()
 			}
 		end,
 		on_confirm = function(item)
-			-- 4. Insert under heading (this also writes the file)
-			utils.insert_under_heading(item.filepath, item.heading_text, selection.lines)
+			-- 4. Load destination document
+			local dest_root = document.read_from_file(item.filepath)
 
-			-- 5. Store in register for undo
+			-- 5. Find target heading in destination
+			local target_heading = document.find_heading_by_text(dest_root, item.heading_text)
+
+			if not target_heading then
+				-- Create heading if it doesn't exist
+				target_heading = document.create_node({
+					level = 1,
+					text = item.heading_text,
+				})
+				document.insert_child(dest_root, target_heading)
+			end
+
+			-- 6. Parse and adjust levels
+			local refile_root = document.parse(selection.lines)
+			local base_level = target_heading.level
+
+			for _, child in ipairs(refile_root.children) do
+				document.adjust_node_levels(child, base_level)
+				document.insert_child(target_heading, child)
+			end
+
+			-- Add non-heading content to target's content_lines
+			for _, line in ipairs(refile_root.content_lines) do
+				table.insert(target_heading.content_lines, line)
+			end
+			target_heading.dirty = true
+
+			-- 7. Write to destination
+			local write_ok, write_err = pcall(document.write_to_file, item.filepath, dest_root)
+			if not write_ok then
+				vim.notify("Refile failed: " .. tostring(write_err), vim.log.levels.ERROR)
+				return
+			end
+
+			-- 8. Store in register for undo
 			vim.fn.setreg("r", table.concat(selection.lines, "\n"))
 
-			-- 6. Delete from source
+			-- 9. Delete from source
 			vim.api.nvim_buf_set_lines(0, selection.start_line, selection.end_line, false, {})
 
 			vim.notify("Refiled to " .. item.filename .. " → " .. item.heading_text .. ' (undo: press "rp in target file)')

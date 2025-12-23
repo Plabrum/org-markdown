@@ -135,6 +135,77 @@ function M.format_item(item, opts)
 	end
 end
 
+-- Recursive tree formatter with fold support
+-- Returns array of {line, item} pairs representing the item and its children
+function M.format_tree(item, opts)
+	opts = opts or {}
+	local result = {} -- Array of {line = string, item = item}
+	local depth = opts.depth or 0
+	local style = opts.style or "timeline"
+	local fold_states = opts.fold_states or {}
+
+	-- Calculate indentation
+	local indent = string.rep("  ", depth)
+
+	-- Determine fold marker
+	local marker = ""
+	if item.children and #item.children > 0 then
+		-- Parent item: show fold state
+		local is_folded = fold_states[item] or false
+		marker = is_folded and "▶ " or "▼ "
+	else
+		-- Leaf item: show bullet
+		marker = "• "
+	end
+
+	-- Format the item line with marker
+	local formatted
+	if style == "blocks" then
+		formatted = indent .. marker .. M.format_blocks(item, "")
+	else
+		formatted = indent .. marker .. M.format_timeline(item, "")
+	end
+
+	-- Handle multi-line blocks formatting
+	if type(formatted) == "table" then
+		-- Blocks format can return multiple lines
+		for i, line in ipairs(formatted) do
+			if i == 1 then
+				-- First line gets the marker
+				table.insert(result, { line = line, item = item })
+			else
+				-- Subsequent lines keep indentation but no marker
+				table.insert(result, { line = indent .. line, item = item })
+			end
+		end
+	elseif formatted:find("\n") then
+		-- Handle newlines in formatted string
+		for line in formatted:gmatch("[^\n]+") do
+			table.insert(result, { line = line, item = item })
+		end
+	else
+		-- Single line
+		table.insert(result, { line = formatted, item = item })
+	end
+
+	-- Recursively format children (if not folded)
+	local is_folded = fold_states[item] or false
+	if not is_folded and item.children then
+		for _, child in ipairs(item.children) do
+			local child_result = M.format_tree(child, {
+				depth = depth + 1,
+				style = style,
+				fold_states = fold_states,
+			})
+			for _, entry in ipairs(child_result) do
+				table.insert(result, entry)
+			end
+		end
+	end
+
+	return result
+end
+
 -- Export styles for reference
 M.styles = {
 	blocks = { box_width = 50 },

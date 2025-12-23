@@ -2,6 +2,33 @@ local M = {}
 local datetime = require("org_markdown.utils.datetime")
 local tree = require("org_markdown.utils.tree")
 
+-- Centralized patterns for org-markdown parsing
+M.PATTERNS = {
+	-- Structural
+	heading = "^(#+)%s+",
+	property = "^([A-Z_]+): %[(.+)%]$",
+
+	-- Heading components
+	state = "^#+%s+([%u_]+)",
+	priority = "%[%#(%u)%]",
+
+	-- Dates (tracked = agenda, untracked = reference only)
+	tracked_date = "<(%d%d%d%d%-%d%d%-%d%d)",
+	untracked_date = "%[(%d%d%d%d%-%d%d%-%d%d)",
+	date_block_tracked = "<%d%d%d%d%-%d%d%-%d%d[^>]*>",
+	date_block_untracked = "%[%d%d%d%d%-%d%d%-%d%d[^%]]*%]",
+	iso_date = "(%d%d%d%d)%-(%d%d)%-(%d%d)",
+
+	-- Tags
+	tag_block = "(:[%w:_-]+:)$",
+	tag_item = "([%w_-]+)",
+
+	-- Misc
+	priority_bracket = "%[%#.%]%s*",
+	double_dash = "%-%-+%s*",
+	trailing_tags = "%s+:[%w:_-]+:$",
+}
+
 -- Build valid states from config dynamically
 local function get_valid_states()
 	local config = require("org_markdown.config")
@@ -13,19 +40,8 @@ local function get_valid_states()
 	return valid
 end
 
--- Pre-defined patterns for single-pass parsing
-local PATTERNS = {
-	state = "^([A-Z_]+)%s+",
-	priority = "%[#([A-Z])%]",
-	tracked_date = "<([^>]+)>",
-	untracked_date = "%[([^%]]+)%]",
-	time = "(%d%d):(%d%d)",
-	tag_block = ":([%w_-]+):",
-}
-
 function M.parse_state(line)
-	-- Match the full word after hash+space
-	local candidate = line:match("^#+%s+([%u_]+)")
+	local candidate = line:match(M.PATTERNS.state)
 	if candidate and get_valid_states()[candidate] then
 		return candidate
 	end
@@ -33,54 +49,44 @@ function M.parse_state(line)
 end
 
 function M.parse_priority(line)
-	-- Return just the letter, not "#A"
-	return line:match("%[%#(%u)%]")
+	return line:match(M.PATTERNS.priority)
 end
 
 function M.parse_text(line)
 	-- Remove leading '#' and whitespace
-	local text = line:gsub("^#+%s*", "")
+	local text = line:gsub(M.PATTERNS.heading, "")
 
 	-- Remove leading state if valid
 	local state = text:match("^([%u_]+)%s+")
 	if state and get_valid_states()[state] then
 		text = text:gsub("^" .. state .. "%s+", "")
 	end
-	-- Remove leading priority like [#A]
-	text = text:gsub("%[%#.%]%s*", "")
 
-	-- Remove all dates with optional day names, times, and ranges
-	-- Handles: <YYYY-MM-DD>, <YYYY-MM-DD Mon>, <YYYY-MM-DD Mon 14:00>, <YYYY-MM-DD Mon 14:00-15:00>
-	-- Also handles multi-day ranges: <YYYY-MM-DD Mon>--<YYYY-MM-DD Tue>
-	text = text:gsub("<%d%d%d%d%-%d%d%-%d%d[^>]*>", "")
-	text = text:gsub("%[%d%d%d%d%-%d%d%-%d%d[^%]]*%]", "")
-	-- Remove double-dash between date ranges
-	text = text:gsub("%-%-+%s*", "")
-
-	-- Remove trailing tags like :tag:tag:
-	text = text:gsub("%s+:[%w:_-]+:$", "")
+	-- Remove priority, dates, and tags
+	text = text:gsub(M.PATTERNS.priority_bracket, "")
+	text = text:gsub(M.PATTERNS.date_block_tracked, "")
+	text = text:gsub(M.PATTERNS.date_block_untracked, "")
+	text = text:gsub(M.PATTERNS.double_dash, "")
+	text = text:gsub(M.PATTERNS.trailing_tags, "")
 
 	return vim.trim(text)
 end
 
 function M.extract_date(line)
-	-- Extract both tracked and untracked dates independently
-	-- (a line can have both, e.g., "TODO task <2025-06-22> [2025-06-23]")
-	local tracked = line:match("<(%d%d%d%d%-%d%d%-%d%d)")
-	local untracked = line:match("%[(%d%d%d%d%-%d%d%-%d%d)")
+	local tracked = line:match(M.PATTERNS.tracked_date)
+	local untracked = line:match(M.PATTERNS.untracked_date)
 	return tracked, untracked
 end
 
 function M.extract_times(line)
-	-- Wrapper: delegate to datetime module
 	return datetime.extract_times(line)
 end
 
 function M.extract_tags(line)
 	local tags = {}
-	local tag_block = line:match("(:[%w:_-]+:)$")
+	local tag_block = line:match(M.PATTERNS.tag_block)
 	if tag_block then
-		for tag in tag_block:gmatch("([%w_-]+)") do
+		for tag in tag_block:gmatch(M.PATTERNS.tag_item) do
 			table.insert(tags, tag)
 		end
 	end

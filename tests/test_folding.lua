@@ -403,17 +403,20 @@ T["cycle_heading_fold - returns true when on heading"] = function()
 	cleanup_buffer(bufnr)
 end
 
-T["cycle_heading_fold - cycles through states"] = function()
+T["cycle_heading_fold - cycles through all states for parent heading"] = function()
+	-- Parent heading with children should cycle through all 4 states
 	local bufnr = create_test_buffer({
-		"# Heading",
-		"Content",
+		"# Parent Heading",
+		"Parent content",
+		"## Child Heading",
+		"Child content",
 	})
 	vim.api.nvim_set_current_buf(bufnr)
 
 	-- Setup folding properly (not just state tracking)
 	folding.setup_buffer_folding(bufnr)
 
-	-- Set cursor on heading
+	-- Set cursor on parent heading
 	vim.api.nvim_win_set_cursor(0, { 1, 0 })
 
 	-- Ensure we start from expanded state by opening all folds
@@ -439,6 +442,39 @@ T["cycle_heading_fold - cycles through states"] = function()
 	cleanup_buffer(bufnr)
 end
 
+T["cycle_heading_fold - leaf heading cycles between folded and expanded only"] = function()
+	-- Leaf heading (no children) should only cycle between folded and expanded
+	local bufnr = create_test_buffer({
+		"# Leaf Heading",
+		"Content with no child headings",
+	})
+	vim.api.nvim_set_current_buf(bufnr)
+
+	-- Setup folding properly
+	folding.setup_buffer_folding(bufnr)
+
+	-- Set cursor on heading
+	vim.api.nvim_win_set_cursor(0, { 1, 0 })
+
+	-- Ensure we start from expanded state
+	vim.cmd("normal! zR")
+	folding.set_fold_state(bufnr, 1, "expanded")
+
+	-- First cycle: expanded -> folded (skips children/subtree since no children)
+	folding.cycle_heading_fold()
+	MiniTest.expect.equality(folding.get_fold_state(bufnr, 1), "folded")
+
+	-- Second cycle: folded -> expanded (skips children/subtree)
+	folding.cycle_heading_fold()
+	MiniTest.expect.equality(folding.get_fold_state(bufnr, 1), "expanded")
+
+	-- Third cycle: loops back to folded
+	folding.cycle_heading_fold()
+	MiniTest.expect.equality(folding.get_fold_state(bufnr, 1), "folded")
+
+	cleanup_buffer(bufnr)
+end
+
 T["cycle_heading_fold - detects closed fold when auto_fold_on_open"] = function()
 	-- Save original config
 	local config = require("org_markdown.config")
@@ -451,22 +487,26 @@ T["cycle_heading_fold - detects closed fold when auto_fold_on_open"] = function(
 		auto_fold_on_open = true,
 	}
 
+	-- Use parent heading with children to test full state detection
 	local bufnr = create_test_buffer({
-		"# Heading",
+		"# Parent Heading",
 		"Content under heading",
+		"## Child Heading",
+		"Child content",
 	})
 	vim.api.nvim_set_current_buf(bufnr)
 
 	-- Setup folding (this will close all folds due to auto_fold_on_open)
 	folding.setup_buffer_folding(bufnr)
 
-	-- Set cursor on heading
+	-- Set cursor on parent heading
 	vim.api.nvim_win_set_cursor(0, { 1, 0 })
 
 	-- Verify fold is actually closed
 	MiniTest.expect.equality(vim.fn.foldclosed(1), 1)
 
-	-- First cycle should detect closed fold and cycle to "children" (not "folded")
+	-- First cycle should detect closed fold and cycle to "children"
+	-- (parent heading has children, so full 4-state cycle applies)
 	folding.cycle_heading_fold()
 	MiniTest.expect.equality(folding.get_fold_state(bufnr, 1), "children")
 

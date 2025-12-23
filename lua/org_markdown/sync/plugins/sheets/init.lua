@@ -361,11 +361,6 @@ local function row_to_item(row, column_config, conversion_config)
 	-- 5. Build body from multiple columns
 	local body_parts = {}
 
-	-- Add row number as hidden metadata (for bi-directional sync)
-	if item._row_number then
-		table.insert(body_parts, string.format("<!-- Sheet Row: %d -->", item._row_number))
-	end
-
 	if column_config.body then
 		for _, body_col in ipairs(column_config.body) do
 			if row[body_col] and row[body_col] ~= "" then
@@ -373,6 +368,12 @@ local function row_to_item(row, column_config, conversion_config)
 				table.insert(body_parts, string.format("**%s:** %s", body_col, row[body_col]))
 			end
 		end
+	end
+
+	-- Add row number as property (for bi-directional sync)
+	-- This gets parsed as a node property when the document is read
+	if item._row_number then
+		table.insert(body_parts, string.format("SHEET_ROW: [%d]", item._row_number))
 	end
 
 	if #body_parts > 0 then
@@ -391,7 +392,7 @@ end
 --- @param filepath string Path to markdown file
 --- @return table Array of items from markdown with _row_number field
 local function parse_existing_markdown(filepath)
-	local parser = require("org_markdown.utils.parser")
+	local document = require("org_markdown.utils.document")
 	local expanded_path = vim.fn.expand(filepath)
 
 	-- Check if file exists
@@ -399,45 +400,37 @@ local function parse_existing_markdown(filepath)
 		return {} -- File doesn't exist yet, no items
 	end
 
-	local lines = vim.fn.readfile(expanded_path)
+	local root = document.read_from_file(expanded_path)
 	local items = {}
 
-	for i, line in ipairs(lines) do
-		-- Check if line is a heading (starts with ##)
-		if line:match("^##%s") then
-			-- Parse heading line
-			local heading_data = parser.parse_headline(line)
-			if heading_data and heading_data.text then
-				local item = {
-					title = heading_data.text,
-					status = heading_data.state,
-					priority = heading_data.priority,
-					tags = heading_data.tags or {},
-				}
+	-- Recursive helper to collect items from document tree
+	local function collect_items(node)
+		if node.type == "heading" and node.parsed and node.parsed.text then
+			local item = {
+				title = node.parsed.text,
+				status = node.parsed.state,
+				priority = node.parsed.priority,
+				tags = node.parsed.tags or {},
+			}
 
-				-- Look ahead for row number comment in body
-				-- The row number is stored as <!-- Sheet Row: N -->
-				local row_number = nil
-				for j = i + 1, math.min(i + 10, #lines) do -- Check next 10 lines
-					local row_match = lines[j]:match("<!%-%- Sheet Row: (%d+) %-%->")
-					if row_match then
-						row_number = tonumber(row_match)
-						break
-					end
-					-- Stop at next heading
-					if lines[j]:match("^#+%s") then
-						break
-					end
-				end
-
-				if row_number then
-					item._row_number = row_number
-					table.insert(items, item)
-				end
+			-- Get row number from node property
+			local row_number = node:get_property("SHEET_ROW")
+			if row_number then
+				item._row_number = tonumber(row_number)
 			end
+
+			if item._row_number then
+				table.insert(items, item)
+			end
+		end
+
+		-- Recurse into children
+		for _, child in ipairs(node.children or {}) do
+			collect_items(child)
 		end
 	end
 
+	collect_items(root)
 	return items
 end
 
