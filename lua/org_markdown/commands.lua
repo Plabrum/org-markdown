@@ -49,6 +49,18 @@ function M.register()
 		desc = "OrgMarkdown: Open Heading in File",
 	})
 
+	vim.api.nvim_create_user_command("MarkdownPromote", function()
+		editing.promote_heading(0)
+	end, {
+		desc = "OrgMarkdown: Promote heading (decrease level)",
+	})
+
+	vim.api.nvim_create_user_command("MarkdownDemote", function()
+		editing.demote_heading(0)
+	end, {
+		desc = "OrgMarkdown: Demote heading (increase level)",
+	})
+
 	-- Add configurable keymaps
 	local keymaps = config.keymaps or {}
 	vim.keymap.set("n", keymaps.capture, "<cmd>MarkdownCapture<CR>", {

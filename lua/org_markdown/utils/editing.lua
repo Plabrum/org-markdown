@@ -118,6 +118,82 @@ function M.cycle_status_with_document(bufnr)
 	return true
 end
 
+--- Promote heading (decrease level) using document tree model
+--- Adjusts the heading and all children recursively
+--- @param bufnr number Buffer number (0 for current)
+--- @return boolean success
+function M.promote_heading(bufnr)
+	bufnr = bufnr or 0
+	local lines = vim.api.nvim_buf_get_lines(bufnr, 0, -1, false)
+	local cursor = vim.api.nvim_win_get_cursor(0)
+	local current_line = cursor[1]
+
+	-- Parse document into tree
+	local document = require("org_markdown.utils.document")
+	local root = document.parse(lines)
+
+	-- Find node at cursor
+	local node = document.find_node_at_line(root, current_line)
+	if not node or node.type ~= "heading" then
+		return false
+	end
+
+	-- Check if we can promote (level must be > 1)
+	if node.level <= 1 then
+		return false
+	end
+
+	-- Adjust level (decrease by 1)
+	document.adjust_node_levels(node, -1)
+
+	-- Serialize and diff
+	local new_lines = document.serialize(root)
+	local changes = document.diff(lines, new_lines)
+
+	-- Apply minimal changes
+	document.apply_to_buffer(bufnr, changes)
+
+	return true
+end
+
+--- Demote heading (increase level) using document tree model
+--- Adjusts the heading and all children recursively
+--- @param bufnr number Buffer number (0 for current)
+--- @return boolean success
+function M.demote_heading(bufnr)
+	bufnr = bufnr or 0
+	local lines = vim.api.nvim_buf_get_lines(bufnr, 0, -1, false)
+	local cursor = vim.api.nvim_win_get_cursor(0)
+	local current_line = cursor[1]
+
+	-- Parse document into tree
+	local document = require("org_markdown.utils.document")
+	local root = document.parse(lines)
+
+	-- Find node at cursor
+	local node = document.find_node_at_line(root, current_line)
+	if not node or node.type ~= "heading" then
+		return false
+	end
+
+	-- Check if we can demote (level must be < 6)
+	if node.level >= 6 then
+		return false
+	end
+
+	-- Adjust level (increase by 1)
+	document.adjust_node_levels(node, 1)
+
+	-- Serialize and diff
+	local new_lines = document.serialize(root)
+	local changes = document.diff(lines, new_lines)
+
+	-- Apply minimal changes
+	document.apply_to_buffer(bufnr, changes)
+
+	return true
+end
+
 function M.continue_todo(line)
 	-- Try checkbox pattern first
 	local checkbox_pattern = "(%s*)%- %[.%](.*)"
@@ -230,6 +306,16 @@ function M.setup_editing_keybinds(bufnr)
 			vim.api.nvim_feedkeys(vim.api.nvim_replace_termcodes("<CR>", true, false, true), "n", false)
 		end
 	end, { desc = "org-markdown: continue todo", buffer = bufnr })
+
+	-- NORMAL: << promotes heading (decrease level, shift left)
+	vim.keymap.set("n", "<<", function()
+		M.promote_heading(bufnr)
+	end, { desc = "org-markdown: promote heading", buffer = bufnr, silent = true })
+
+	-- NORMAL: >> demotes heading (increase level, shift right)
+	vim.keymap.set("n", ">>", function()
+		M.demote_heading(bufnr)
+	end, { desc = "org-markdown: demote heading", buffer = bufnr, silent = true })
 
 	mark_set(bufnr)
 end
