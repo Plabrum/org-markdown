@@ -1,6 +1,17 @@
-local M = {}
+-- Folding system for markdown headings
+-- Responsibilities:
+-- - Calculate fold levels for markdown headings
+-- - Manage per-heading fold state cycling (folded → children → subtree → expanded)
+-- - Manage global fold level cycling
+-- - Integrate with persistent fold storage
+-- - Determine which files should have folding enabled
+
 local tree = require("org_markdown.utils.tree")
 local document = require("org_markdown.utils.document")
+local fold_storage = require("org_markdown.utils.fold_storage")
+local patterns = require("org_markdown.utils.patterns")
+
+local M = {}
 
 -- ============================================================================
 -- Document Caching
@@ -29,6 +40,38 @@ end
 local function invalidate_document(bufnr)
 	document_cache[bufnr] = nil
 end
+
+-- ============================================================================
+-- Configuration & Path Matching
+-- ============================================================================
+
+--- Check if folding should be enabled for a given file path
+---@param filepath string Buffer file path
+---@return boolean True if folding should be enabled for this file
+function M.should_enable_folding_for_file(filepath)
+	local config = require("org_markdown.config")
+	local folding_config = config.folding or {}
+
+	if not folding_config.enabled then
+		return false
+	end
+
+	-- If enabled_paths is nil, folding is enabled for all markdown files
+	if folding_config.enabled_paths == nil then
+		return true
+	end
+
+	-- Check if file matches any enabled_paths pattern
+	if filepath == "" then
+		return false
+	end
+
+	return patterns.matches_any_pattern(filepath, folding_config.enabled_paths)
+end
+
+-- ============================================================================
+-- Fold Level Calculation
+-- ============================================================================
 
 -- Helper: Check if a line is a heading
 -- @param lnum number: Line number (1-indexed)
@@ -123,12 +166,15 @@ local function apply_fold_state(node, state, original_cursor)
 	local lnum = node.start_line
 	local winid = vim.api.nvim_get_current_win()
 
+	-- Move cursor to the heading
+	vim.api.nvim_win_set_cursor(0, { lnum, 0 })
+
 	if state == "folded" then
 		vim.cmd("normal! zc")
 		node.is_open = false
 	elseif state == "children" then
-		-- Open all folds first with zR, then close children
-		vim.cmd("normal! zR")
+		-- Open this fold and all its sub-folds
+		vim.cmd("normal! zO")
 		node.is_open = true
 
 		-- Close all direct child folds
@@ -142,10 +188,10 @@ local function apply_fold_state(node, state, original_cursor)
 
 		vim.api.nvim_win_set_cursor(0, original_cursor)
 	elseif state == "subtree" or state == "expanded" then
-		-- Set foldlevel high to open all folds
-		vim.wo[winid].foldlevel = 99
+		-- Open this fold recursively (only this subtree)
+		vim.cmd("normal! zO")
 
-		-- Open all folds recursively
+		-- Open all child folds recursively
 		open_subtree_folds(node)
 		vim.api.nvim_win_set_cursor(0, original_cursor)
 	end
@@ -243,6 +289,16 @@ function M.cycle_global_fold()
 
 	-- Clear per-heading states since we're in global mode now
 	vim.b[bufnr].org_markdown_fold_states = {}
+
+	-- Save fold level immediately if remember_folds is enabled
+	local config = require("org_markdown.config")
+	local folding_config = config.folding or {}
+	if folding_config.remember_folds then
+		local filepath = vim.api.nvim_buf_get_name(bufnr)
+		if filepath ~= "" then
+			fold_storage.set_fold_level(filepath, next_level)
+		end
+	end
 end
 
 -- Setup folding for a buffer
@@ -272,29 +328,46 @@ function M.setup_buffer_folding(bufnr)
 	local config = require("org_markdown.config")
 	local folding_config = config.folding or {}
 
-	if folding_config.auto_fold_on_open then
-		-- Find the minimum heading level in the buffer
-		-- This allows us to show all top-level headings while folding their content
-		local min_level = 99
-		local line_count = vim.api.nvim_buf_line_count(bufnr)
-		for lnum = 1, line_count do
-			local line = vim.fn.getline(lnum)
-			local level = M.get_heading_level(line)
-			if level and level < min_level then
-				min_level = level
-			end
-		end
+	-- Get file path for persistent storage
+	local filepath = vim.api.nvim_buf_get_name(bufnr)
+	local initial_foldlevel
 
-		-- Set foldlevel to show all top-level headings (min_level) but fold their content
-		-- foldlevel = min_level - 1 means headings at min_level are visible but folded
-		local initial_foldlevel = min_level > 1 and (min_level - 1) or 0
-		vim.wo[winid].foldlevel = initial_foldlevel
-		vim.b[bufnr].org_markdown_global_fold_level = initial_foldlevel
-	else
-		-- Start with all headings expanded
-		vim.wo[winid].foldlevel = 99
-		vim.b[bufnr].org_markdown_global_fold_level = 99
+	-- Check if we should remember folds for this file
+	if folding_config.remember_folds and filepath ~= "" then
+		-- Try to load saved fold level
+		local saved_level = fold_storage.get_fold_level(filepath)
+		if saved_level then
+			initial_foldlevel = saved_level
+		end
 	end
+
+	-- If no saved level, use auto_fold_on_open or default behavior
+	if not initial_foldlevel then
+		if folding_config.auto_fold_on_open then
+			-- Find the minimum heading level in the buffer
+			-- This allows us to show all top-level headings while folding their content
+			local min_level = 99
+			local line_count = vim.api.nvim_buf_line_count(bufnr)
+			for lnum = 1, line_count do
+				local line = vim.fn.getline(lnum)
+				local level = M.get_heading_level(line)
+				if level and level < min_level then
+					min_level = level
+				end
+			end
+
+			-- Set foldlevel to show all top-level headings (min_level) but fold their content
+			-- foldlevel = min_level - 1 means headings at min_level are visible but folded
+			initial_foldlevel = min_level > 1 and (min_level - 1) or 0
+		else
+			-- Start with all headings expanded
+			initial_foldlevel = 99
+		end
+	end
+
+	-- Apply the fold level
+	vim.wo[winid].foldlevel = initial_foldlevel
+	vim.b[bufnr].org_markdown_global_fold_level = initial_foldlevel
 
 	-- Set up autocmds to clean up state and window options
 	local augroup = vim.api.nvim_create_augroup("OrgMarkdownFolding_" .. bufnr, { clear = true })
@@ -324,6 +397,14 @@ function M.setup_buffer_folding(bufnr)
 		group = augroup,
 		buffer = bufnr,
 		callback = function()
+			-- Save fold level if remember_folds is enabled
+			if folding_config.remember_folds and filepath ~= "" then
+				local current_level = vim.b[bufnr].org_markdown_global_fold_level
+				if current_level then
+					fold_storage.set_fold_level(filepath, current_level)
+				end
+			end
+
 			local current_winid = vim.api.nvim_get_current_win()
 			-- Reset to Neovim defaults
 			vim.wo[current_winid].foldmethod = "manual"

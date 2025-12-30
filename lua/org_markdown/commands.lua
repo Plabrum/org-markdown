@@ -1,3 +1,12 @@
+-- Command and keymap registration
+-- Responsibilities:
+-- - Register all user commands (MarkdownCapture, MarkdownAgenda, etc.)
+-- - Register global keymaps from config
+-- - Setup FileType autocmd for markdown files (editing keybinds, syntax, folding)
+-- - Dynamically register sync plugin commands and keymaps
+-- - Dynamically register quick note commands and keymaps
+-- - Register notification and archive commands
+
 local agenda = require("org_markdown.agenda")
 local capture = require("org_markdown.capture")
 local refile = require("org_markdown.refile")
@@ -104,12 +113,14 @@ function M.register()
 			syntax.setup_buffer_syntax(args.buf)
 
 			-- Setup folding if enabled (deferred to run after other plugins like Pencil)
-			local folding_config = config.folding or {}
-			if folding_config.enabled then
-				vim.schedule(function()
-					local folding = require("org_markdown.folding")
-					folding.setup_buffer_folding(args.buf)
-				end)
+			if config.folding and config.folding.enabled then
+				local filepath = vim.api.nvim_buf_get_name(args.buf)
+				local folding = require("org_markdown.folding")
+				if folding.should_enable_folding_for_file(filepath) then
+					vim.schedule(function()
+						folding.setup_buffer_folding(args.buf)
+					end)
+				end
 			end
 		end,
 	})

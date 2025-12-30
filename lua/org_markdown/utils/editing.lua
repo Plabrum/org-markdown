@@ -1,3 +1,12 @@
+-- Editing keybindings and inline operations
+-- Responsibilities:
+-- - Setup buffer-local keybindings for editing operations
+-- - Inline checkbox state cycling (without document model)
+-- - Inline status cycling (simple text replacement)
+-- - Document-based status cycling (with COMPLETED_AT handling)
+-- - Heading promotion/demotion (with children adjustment)
+-- - Todo list continuation on Enter
+
 local config = require("org_markdown.config")
 local M = {}
 
@@ -272,31 +281,28 @@ function M.setup_editing_keybinds(bufnr)
 		vim.api.nvim_feedkeys(vim.api.nvim_replace_termcodes("<CR>", true, false, true), "n", false)
 	end, { desc = "org-markdown: cycle or enter", buffer = bufnr })
 
-	-- NORMAL: <Tab> cycles heading folds if enabled, else cycles checkbox/status
+	-- NORMAL: <Tab> cycles heading folds (ONLY - no fallback to todo cycling)
 	local folding_config = config.folding or {}
 	if folding_config.enabled and folding_config.fold_on_tab then
-		vim.keymap.set("n", "<Tab>", function()
-			local folding = require("org_markdown.folding")
-			local did_fold = folding.cycle_heading_fold()
-			if not did_fold then
-				-- Fallback to checkbox/status cycling
-				vim.notify("Fold: fallback to checkbox/status cycling", vim.log.levels.DEBUG)
-				local did = M.edit_line_at_cursor(function(line)
-					return M.cycle_checkbox_inline(line, config.checkbox_states)
-				end)
-				if not did then
-					M.cycle_status_with_document(bufnr)
-				end
-			end
-		end, { desc = "org-markdown: cycle fold or todo state", buffer = bufnr })
+		local filepath = vim.api.nvim_buf_get_name(bufnr)
+		local folding = require("org_markdown.folding")
+		if folding.should_enable_folding_for_file(filepath) then
+			vim.keymap.set("n", "<Tab>", function()
+				folding.cycle_heading_fold()
+				-- No fallback - Tab is for folding only, Enter is for todo cycling
+			end, { desc = "org-markdown: cycle fold", buffer = bufnr })
+		end
 	end
 
 	-- NORMAL: <S-Tab> cycles global fold level
 	if folding_config.enabled and folding_config.global_fold_on_shift_tab then
-		vim.keymap.set("n", "<S-Tab>", function()
-			local folding = require("org_markdown.folding")
-			folding.cycle_global_fold()
-		end, { desc = "org-markdown: cycle global fold level", buffer = bufnr })
+		local filepath = vim.api.nvim_buf_get_name(bufnr)
+		local folding = require("org_markdown.folding")
+		if folding.should_enable_folding_for_file(filepath) then
+			vim.keymap.set("n", "<S-Tab>", function()
+				folding.cycle_global_fold()
+			end, { desc = "org-markdown: cycle global fold level", buffer = bufnr })
+		end
 	end
 
 	-- INSERT: <CR> continues todos, else default <CR>

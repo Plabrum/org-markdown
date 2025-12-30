@@ -1,4 +1,11 @@
--- org_markdown/agenda/calendar.lua + tasks.lua
+-- Agenda view rendering and management
+-- Responsibilities:
+-- - Scan files for agenda items (tasks, calendar events, all headings)
+-- - Filter, sort, and group items based on view configuration
+-- - Render agenda views with hierarchical support
+-- - Manage fold states for agenda items
+-- - Handle agenda buffer keybindings and interactions
+
 local config = require("org_markdown.config")
 local utils = require("org_markdown.utils.utils")
 local document = require("org_markdown.utils.document")
@@ -7,15 +14,21 @@ local editing = require("org_markdown.utils.editing")
 local agenda_formatters = require("org_markdown.agenda_formatters")
 local datetime = require("org_markdown.utils.datetime")
 local frontmatter = require("org_markdown.utils.frontmatter")
+local preview = require("org_markdown.utils.preview")
 
 local M = {}
 
 -- Module-level state for agenda views
 local state = {
-	fold_states = {}, -- Fold states by view_id: { view_id = { item = is_folded } }
+	fold_states = {}, -- Fold states by view_id: { view_id = { "file:line" = is_folded } }
 	current_view_id = nil, -- Currently displayed view
 	line_to_item = {}, -- Current line_to_item mapping
 }
+
+-- Helper: Generate stable identifier for an item
+local function get_item_id(item)
+	return string.format("%s:%d", item.file, item.line)
+end
 
 -- Color palette mapping color names to hex values
 local COLOR_PALETTE = {
@@ -534,9 +547,18 @@ local function render_view(groups, view_def, view_id)
 	local format_name = (view_def.display and view_def.display.format) or "timeline"
 	local fmt = formatters[format_name] or formatters.timeline
 
-	-- Get fold states for this view
+	-- Get fold states for this view (convert to ID-based lookup)
 	state.fold_states[view_id] = state.fold_states[view_id] or {}
-	local fold_states = state.fold_states[view_id]
+	local fold_states_by_id = state.fold_states[view_id]
+
+	-- Build a lookup function for fold states using stable IDs
+	local fold_lookup = {}
+	setmetatable(fold_lookup, {
+		__index = function(_, item)
+			local item_id = get_item_id(item)
+			return fold_states_by_id[item_id] or false
+		end,
+	})
 
 	for _, group in ipairs(groups) do
 		if group.key then
@@ -556,7 +578,7 @@ local function render_view(groups, view_def, view_id)
 			local tree_result = agenda_formatters.format_tree(item, {
 				depth = 0,
 				style = format_name,
-				fold_states = fold_states,
+				fold_states = fold_lookup,
 			})
 
 			for _, entry in ipairs(tree_result) do
@@ -628,7 +650,15 @@ function M.refresh_current_view()
 	vim.bo[state.current_buf].modifiable = false
 end
 
--- Cycle fold state for item at cursor
+-- Show full entry details in a floating window
+local function show_entry_preview(item)
+	if not item or not item.file or not item.line then
+		return
+	end
+	preview.show_heading_preview(item.file, item.line)
+end
+
+-- Cycle fold state for item at cursor (or show preview for leaf items)
 function M.cycle_agenda_fold()
 	if not state.current_win or not state.current_buf then
 		return
@@ -638,18 +668,25 @@ function M.cycle_agenda_fold()
 	local line_num = cursor[1]
 	local item = state.line_to_item[line_num]
 
-	if not item or not item.children or #item.children == 0 then
-		-- Can't fold leaf items or non-items
+	if not item then
+		-- No item at cursor
 		return
 	end
 
-	-- Initialize fold states for this view if needed
+	if not item.children or #item.children == 0 then
+		-- Leaf item: show preview instead of folding
+		show_entry_preview(item)
+		return
+	end
+
+	-- Parent item: toggle fold state
 	local view_id = state.current_view_id
 	state.fold_states[view_id] = state.fold_states[view_id] or {}
 
-	-- Toggle fold state
-	local is_folded = state.fold_states[view_id][item] or false
-	state.fold_states[view_id][item] = not is_folded
+	-- Use stable identifier instead of object reference
+	local item_id = get_item_id(item)
+	local is_folded = state.fold_states[view_id][item_id] or false
+	state.fold_states[view_id][item_id] = not is_folded
 
 	-- Re-render the view
 	M.refresh_current_view()
@@ -680,7 +717,7 @@ function M.show_view(view_id)
 		title = "Agenda - " .. (view_def.title or view_id),
 		method = config.agendas.window_method,
 		filetype = "markdown",
-		footer = "fold <tab> | <CR> jump | q close",
+		footer = "<CR> cycle | <tab> fold | gf jump | q close",
 	})
 
 	vim.api.nvim_buf_set_lines(buf, 0, -1, false, lines)
@@ -696,8 +733,39 @@ function M.show_view(view_id)
 	vim.wo[win].breakindent = true
 	vim.wo[win].breakindentopt = "shift:7"
 
-	-- Add keymap to jump to file
+	-- Add keymap to cycle task state
 	vim.keymap.set("n", "<CR>", function()
+		local cursor = vim.api.nvim_win_get_cursor(win)
+		local line_num = cursor[1]
+		local item = line_to_item[line_num]
+		if item then
+			local new_heading, new_state = cycle_todo_in_file(item)
+			if new_heading then
+				-- Update the line in-place without refreshing (preserves DONE items until agenda closes)
+				local current_line = vim.api.nvim_buf_get_lines(buf, line_num - 1, line_num, false)[1]
+				-- Extract the prefix (indentation + formatting) and replace just the heading part
+				local prefix = current_line:match("^(%s*)")
+				local updated_line = prefix .. new_heading:match("^#*%s*(.*)$")
+
+				vim.bo[buf].modifiable = true
+				vim.api.nvim_buf_set_lines(buf, line_num - 1, line_num, false, { updated_line })
+
+				-- Re-apply syntax highlighting to the updated line
+				local lines = vim.api.nvim_buf_get_lines(buf, 0, -1, false)
+				highlight_states(buf, lines)
+
+				vim.bo[buf].modifiable = false
+
+				-- Update the item state in the mapping for consistency
+				if item then
+					item.state = new_state
+				end
+			end
+		end
+	end, { buffer = buf, silent = true })
+
+	-- Add keymap to jump to file
+	vim.keymap.set("n", "gf", function()
 		local cursor = vim.api.nvim_win_get_cursor(win)
 		local line_num = cursor[1]
 		local item = line_to_item[line_num]
@@ -798,14 +866,46 @@ function M.show_tabbed_agenda()
 			utils.set_window_title(win, new_title)
 		end,
 		get_footer = function(view_id, index, total)
-			return string.format("Tab [%d/%d] | fold <tab> | agenda cycle ] | <CR> jump | q close", index, total)
+			return string.format("Tab [%d/%d] | <CR> cycle | <tab> fold | ] agenda | gf jump | q close", index, total)
 		end,
 		memory_id = "agenda",
 	})
 
 	cycle_instance:setup()
 
+	-- Add keymap to cycle task state
 	vim.keymap.set("n", "<CR>", function()
+		local cursor = vim.api.nvim_win_get_cursor(win)
+		local line_num = cursor[1]
+		local item = vim.b[buf].agenda_line_to_item[line_num]
+		if item then
+			local new_heading, new_state = cycle_todo_in_file(item)
+			if new_heading then
+				-- Update the line in-place without refreshing (preserves DONE items until agenda closes)
+				local current_line = vim.api.nvim_buf_get_lines(buf, line_num - 1, line_num, false)[1]
+				-- Extract the prefix (indentation + formatting) and replace just the heading part
+				local prefix = current_line:match("^(%s*)")
+				local updated_line = prefix .. new_heading:match("^#*%s*(.*)$")
+
+				vim.bo[buf].modifiable = true
+				vim.api.nvim_buf_set_lines(buf, line_num - 1, line_num, false, { updated_line })
+
+				-- Re-apply syntax highlighting to the updated line
+				local lines = vim.api.nvim_buf_get_lines(buf, 0, -1, false)
+				highlight_states(buf, lines)
+
+				vim.bo[buf].modifiable = false
+
+				-- Update the item state in the mapping for consistency
+				if item then
+					item.state = new_state
+				end
+			end
+		end
+	end, { buffer = buf, silent = true })
+
+	-- Add keymap to jump to file
+	vim.keymap.set("n", "gf", function()
 		local cursor = vim.api.nvim_win_get_cursor(win)
 		local line_num = cursor[1]
 		local item = vim.b[buf].agenda_line_to_item[line_num]

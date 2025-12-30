@@ -1,4 +1,22 @@
+-- Configuration management with deep merge and path expansion
+-- Responsibilities:
+-- - Define default configuration with all available options
+-- - Deep merge user config with defaults (objects merge, arrays replace)
+-- - Integrate with neoconf for project-specific settings
+-- - Expand ~/org/ paths throughout config based on org_dir
+-- - Validate agenda view definitions
+-- - Provide helper methods for accessing ordered views
+
 local M = {
+	-- Base directory for org files
+	-- Used as default for:
+	-- - captures.templates.*.filename (~/org/...)
+	-- - refile_paths (~/org)
+	-- - quick_note_file (~/org/quick_notes/)
+	-- - folding.enabled_paths (~/org/**)
+	-- Change this to customize where your org files live
+	org_dir = "~/org",
+
 	captures = {
 		window_method = "horizontal",
 		default_template = "Task",
@@ -122,7 +140,9 @@ local M = {
 	},
 	folding = {
 		enabled = true, -- Enable folding features
-		auto_fold_on_open = true, -- Fold all headings when file opens
+		auto_fold_on_open = true, -- Fold all headings when file opens (ignored if remember_folds is true)
+		remember_folds = true, -- Remember fold level per file (overrides auto_fold_on_open)
+		enabled_paths = { "~/org/**" }, -- List of path patterns to enable folding (nil = all markdown files)
 		fold_on_tab = true, -- Use Tab for heading fold cycling
 		global_fold_on_shift_tab = true, -- Use Shift-Tab for global fold cycling
 	},
@@ -267,6 +287,30 @@ local function register_neoconf()
 	end
 end
 
+--- Recursively expand ~/org/ paths in config based on org_dir
+--- @param value any Config value (can be table, string, or other)
+--- @param org_dir string The org_dir to expand to
+--- @return any Expanded value
+local function expand_org_paths(value, org_dir)
+	if type(value) == "string" then
+		-- Expand ~/org/ prefix in strings
+		if value:match("^~/org/") or value == "~/org" or value:match("^~/org%*%*") then
+			return value:gsub("^~/org", org_dir)
+		end
+		return value
+	elseif type(value) == "table" then
+		-- Recursively expand tables
+		local expanded = {}
+		for k, v in pairs(value) do
+			expanded[k] = expand_org_paths(v, org_dir)
+		end
+		return expanded
+	else
+		-- Other types pass through unchanged
+		return value
+	end
+end
+
 -- Helper to get views as an ordered array (for iteration/tabs)
 -- Returns array of { id = "view_id", ...view_def }
 function M.get_ordered_views()
@@ -308,6 +352,11 @@ function M.setup(user_config)
 	-- Merge: defaults < user_config < neoconf (neoconf has highest priority)
 	local merged = merge_tables(M._defaults, user_config or {})
 	M._runtime = merge_tables(merged, neoconf_config)
+
+	-- Expand ~/org/ paths throughout the config based on org_dir
+	if M._runtime.org_dir then
+		M._runtime = expand_org_paths(M._runtime, M._runtime.org_dir)
+	end
 
 	-- Validate views after merging
 	if M._runtime.agendas and M._runtime.agendas.views then
