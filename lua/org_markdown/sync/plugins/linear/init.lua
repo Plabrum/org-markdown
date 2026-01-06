@@ -32,9 +32,11 @@ local M = {
 
 			-- IN_PROGRESS states
 			{ pattern = "in progress", status = "IN_PROGRESS" },
-			{ pattern = "in review", status = "IN_PROGRESS" },
 			{ pattern = "started", status = "IN_PROGRESS" },
 			{ pattern = "in development", status = "IN_PROGRESS" },
+
+			-- IN_REVIEW states
+			{ pattern = "in review", status = "IN_REVIEW" },
 
 			-- DONE states
 			{ pattern = "done", status = "DONE" },
@@ -54,6 +56,7 @@ local M = {
 		reverse_status_mapping = {
 			TODO = "Todo",
 			IN_PROGRESS = "In Progress",
+			IN_REVIEW = "In Review",
 			DONE = "Done",
 			CANCELLED = "Canceled",
 			BLOCKED = "Blocked",

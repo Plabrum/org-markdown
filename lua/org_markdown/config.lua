@@ -132,12 +132,16 @@ local M = {
 	status_states = {
 		"TODO",
 		"IN_PROGRESS",
+		"IN_REVIEW",
 		"DONE",
+		"CANCELLED",
 	},
 	status_colors = {
 		TODO = "red",
 		IN_PROGRESS = "yellow",
-		DONE = "green",
+		IN_REVIEW = "green",
+		DONE = "blue",
+		CANCELLED = "gray",
 	},
 	folding = {
 		enabled = true, -- Enable folding features
