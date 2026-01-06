@@ -54,6 +54,12 @@ The plugin follows a modular architecture with clear separation of concerns:
 - Uses custom async/promise implementation for user prompts and buffer editing
 - Key flow: expand template → open capture buffer → submit → insert under heading
 - Template markers are escaped using `parser.escape_marker()` before pattern matching
+- Default template includes `CREATED_AT: [YYYY-MM-DD Day]` using org-mode standard format
+- Date formats follow org-mode conventions:
+  - `%u` → `[2025-01-05 Sun]` (inactive timestamp with day-of-week)
+  - `%t` → `<2025-01-05 Sun>` (active timestamp with day-of-week)
+  - `%<%Y-%m-%d %a>` → custom format with day-of-week
+- Both `CREATED_AT` and `COMPLETED_AT` use org-mode format: `[YYYY-MM-DD Day]`
 
 **Refiling** (`refile.lua`)
 - Detects content to refile: bullet lines or heading blocks (with all sub-headings)

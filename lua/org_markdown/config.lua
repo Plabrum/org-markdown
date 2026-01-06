@@ -42,11 +42,11 @@ local M = {
 		-- %x - Clipboard contents
 		-- %? - Cursor position after template expansion
 		-- %^{prompt} - Prompt user for input with label
-		-- %<fmt> - Custom date format (e.g., %<%Y-%m-%d %H:%M:%S>)
+		-- %<fmt> - Custom date format (e.g., %<%Y-%m-%d %a> for 2025-11-29 Fri)
 
 		templates = {
 			["Task"] = {
-				template = "# TODO %? \n %u",
+				template = "# TODO %? \nCREATED_AT: %u",
 				filename = "~/org/refile.md",
 				heading = "",
 			},

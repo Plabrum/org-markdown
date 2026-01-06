@@ -57,11 +57,11 @@ T["parse - extracts properties from content"] = function()
 	local lines = {
 		"## DONE Task",
 		"Some content",
-		"COMPLETED_AT: [2025-12-22]",
+		"COMPLETED_AT: [2025-12-22 Sun]",
 	}
 	local root = document.parse(lines)
 	local node = root.children[1]
-	MiniTest.expect.equality(node.properties.COMPLETED_AT, "2025-12-22")
+	MiniTest.expect.equality(node.properties.COMPLETED_AT, "2025-12-22 Sun")
 	MiniTest.expect.equality(#node.content_lines, 1)
 	MiniTest.expect.equality(node.content_lines[1], "Some content")
 end
@@ -139,11 +139,11 @@ T["serialize - includes properties at end of content"] = function()
 		"Content",
 	}
 	local root = document.parse(lines)
-	root.children[1].properties.COMPLETED_AT = "2025-12-22"
+	root.children[1].properties.COMPLETED_AT = "2025-12-22 Sun"
 	local output = document.serialize(root)
 	MiniTest.expect.equality(output[1], "## DONE Task")
 	MiniTest.expect.equality(output[2], "Content")
-	MiniTest.expect.equality(output[3], "COMPLETED_AT: [2025-12-22]")
+	MiniTest.expect.equality(output[3], "COMPLETED_AT: [2025-12-22 Sun]")
 end
 
 T["serialize - reconstructs dirty heading"] = function()
@@ -249,7 +249,7 @@ T["set_state - changes state"] = function()
 end
 
 T["set_state - removes COMPLETED_AT when leaving DONE"] = function()
-	local lines = { "## DONE Task", "COMPLETED_AT: [2025-12-22]" }
+	local lines = { "## DONE Task", "COMPLETED_AT: [2025-12-22 Sun]" }
 	local root = document.parse(lines)
 	local node = root.children[1]
 	node:set_state("TODO")
@@ -311,13 +311,13 @@ T["has_state - returns false when state differs"] = function()
 end
 
 T["get_completed_at - returns date from properties"] = function()
-	local lines = { "## DONE Task", "COMPLETED_AT: [2025-12-22]" }
+	local lines = { "## DONE Task", "COMPLETED_AT: [2025-12-22 Sun]" }
 	local root = document.parse(lines)
-	MiniTest.expect.equality(root.children[1]:get_completed_at(), "2025-12-22")
+	MiniTest.expect.equality(root.children[1]:get_completed_at(), "2025-12-22 Sun")
 end
 
 T["get_completed_at_date - returns date table"] = function()
-	local lines = { "## DONE Task", "COMPLETED_AT: [2025-12-22]" }
+	local lines = { "## DONE Task", "COMPLETED_AT: [2025-12-22 Sun]" }
 	local root = document.parse(lines)
 	local date = root.children[1]:get_completed_at_date()
 	MiniTest.expect.equality(date.year, 2025)
@@ -341,12 +341,12 @@ T["integration - cycle to DONE adds COMPLETED_AT at content end"] = function()
 	-- Simulate cycling to DONE (without archive check)
 	node.parsed.state = "DONE"
 	node.dirty = true
-	node.properties.COMPLETED_AT = "2025-12-22"
+	node.properties.COMPLETED_AT = "2025-12-22 Sun"
 
 	local output = document.serialize(root)
 	MiniTest.expect.equality(output[1], "## DONE Task")
 	MiniTest.expect.equality(output[2], "Some content")
-	MiniTest.expect.equality(output[3], "COMPLETED_AT: [2025-12-22]")
+	MiniTest.expect.equality(output[3], "COMPLETED_AT: [2025-12-22 Sun]")
 	MiniTest.expect.equality(output[4], "## Next heading")
 end
 
@@ -364,12 +364,12 @@ T["integration - nested heading preserves structure"] = function()
 	local parent = root.children[1]
 	parent.parsed.state = "DONE"
 	parent.dirty = true
-	parent.properties.COMPLETED_AT = "2025-12-22"
+	parent.properties.COMPLETED_AT = "2025-12-22 Sun"
 
 	local output = document.serialize(root)
 	MiniTest.expect.equality(output[1], "## DONE Parent")
 	MiniTest.expect.equality(output[2], "Parent content")
-	MiniTest.expect.equality(output[3], "COMPLETED_AT: [2025-12-22]")
+	MiniTest.expect.equality(output[3], "COMPLETED_AT: [2025-12-22 Sun]")
 	MiniTest.expect.equality(output[4], "### Child")
 	MiniTest.expect.equality(output[5], "Child content")
 	MiniTest.expect.equality(output[6], "## Sibling")

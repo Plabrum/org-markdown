@@ -83,9 +83,8 @@ function Node:set_state(new_state)
 	-- Auto-add COMPLETED_AT when transitioning to DONE
 	local archive = require("org_markdown.archive")
 	if new_state == "DONE" and old_state ~= "DONE" and archive.is_enabled() then
-		local datetime = require("org_markdown.utils.datetime")
-		local today = datetime.today()
-		self.properties.COMPLETED_AT = datetime.to_iso_string(today)
+		-- Use org-mode format with day-of-week: 2025-01-05 Sun
+		self.properties.COMPLETED_AT = os.date("%Y-%m-%d %a")
 	end
 
 	-- Remove COMPLETED_AT when transitioning away from DONE
