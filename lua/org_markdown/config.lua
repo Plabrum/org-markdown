@@ -54,6 +54,7 @@ local M = {
 	},
 	agendas = {
 		window_method = "float",
+		ignore_patterns = { "*.archive.md" }, -- Patterns to exclude from agenda scanning
 		views = {
 			tasks = {
 				order = 1,

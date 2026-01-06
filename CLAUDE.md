@@ -137,6 +137,22 @@ User prompts and capture buffers use the custom async system. Wrap async functio
 ### Agenda Views
 The agenda system uses a configurable view architecture that processes items through a filter → sort → group → render pipeline.
 
+#### Agenda Configuration
+
+**Global Agenda Settings:**
+```lua
+agendas = {
+  window_method = "float",                    -- "float", "vertical", or "horizontal"
+  ignore_patterns = { "*.archive.md" },      -- Patterns to exclude from all agenda views
+  views = { ... }                             -- View definitions (see below)
+}
+```
+
+The `ignore_patterns` setting applies globally to all agenda views and supports the same pattern syntax as `file_patterns` in filters:
+- Exact filename: `"archive.md"`
+- Wildcard: `"*.archive.md"` (matches all files ending in `.archive.md`)
+- Directory: `"archive/*"` (matches all files in paths containing `archive/`)
+
 #### View Configuration Structure
 Views are defined as an object in `config.agendas.views`, keyed by view ID. Custom views merge additively with defaults (similar to capture templates). Each view has the following structure:
 ```lua

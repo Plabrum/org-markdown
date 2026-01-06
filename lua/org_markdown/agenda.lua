@@ -154,7 +154,7 @@ local function scan_files(file_patterns)
 	-- Apply file patterns for early filtering
 	local files = queries.find_markdown_files({
 		include_patterns = file_patterns or {},
-		ignore_patterns = {}, -- Agenda scans all non-filtered files
+		ignore_patterns = config.agendas.ignore_patterns or {},
 	})
 	local agenda_items = { tasks = {}, calendar = {}, all = {} }
 
