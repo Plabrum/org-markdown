@@ -86,7 +86,7 @@ end
 
 --- Parse Linear date string (YYYY-MM-DD) to date table
 --- @param date_str string|nil ISO date string
---- @return table|nil Date table {year, month, day}
+--- @return table|nil Date table {year, month, day, day_name}
 function M.parse_linear_date(date_str)
 	if not date_str then
 		return nil
@@ -94,11 +94,15 @@ function M.parse_linear_date(date_str)
 
 	local year, month, day = date_str:match("(%d%d%d%d)-(%d%d)-(%d%d)")
 	if year then
-		return {
+		local date_table = {
 			year = tonumber(year),
 			month = tonumber(month),
 			day = tonumber(day),
 		}
+		-- Add day name for formatting
+		local timestamp = os.time(date_table)
+		date_table.day_name = os.date("%a", timestamp)
+		return date_table
 	end
 
 	return nil

@@ -16,6 +16,7 @@ local M = {
 		api_key = "", -- Required: Linear API key (get from https://linear.app/settings/api)
 		include_assigned = true,
 		include_cycles = false,
+		filter_by_cycle = false, -- Only include issues from the active cycle (removes issues when cycle ends)
 		team_ids = {}, -- Team keys (e.g., {"IF", "ENG"}) - Empty = all teams
 		heading_level = 1,
 		auto_sync = false,
@@ -150,17 +151,30 @@ end
 --- @param cycle table Linear cycle object
 --- @return table Item
 local function cycle_to_item(cycle)
+	-- Build cycle title with null checking
+	local cycle_name
+	if not mapping.is_null(cycle.name) and cycle.name ~= "" then
+		cycle_name = cycle.name
+	elseif not mapping.is_null(cycle.number) then
+		cycle_name = "Cycle " .. cycle.number
+	else
+		cycle_name = "Cycle"
+	end
+
 	-- Build body with metadata
 	local metadata = {}
 	if not mapping.is_null(cycle.team) and cycle.team.name then
 		table.insert(metadata, "**Team:** " .. cycle.team.name)
+	end
+	if not mapping.is_null(cycle.number) then
+		table.insert(metadata, "**Number:** " .. cycle.number)
 	end
 	if not mapping.is_null(cycle.id) then
 		table.insert(metadata, "**ID:** `" .. cycle.id .. "`")
 	end
 
 	local item = {
-		title = string.format("[%s] %s", cycle.team.key, cycle.name),
+		title = string.format("[%s] %s", cycle.team.key, cycle_name),
 		start_date = mapping.parse_linear_date(not mapping.is_null(cycle.startsAt) and cycle.startsAt:match("^[^T]+") or nil),
 		end_date = mapping.parse_linear_date(not mapping.is_null(cycle.endsAt) and cycle.endsAt:match("^[^T]+") or nil),
 		all_day = true,
@@ -193,7 +207,8 @@ function M.pull()
 
 	-- Fetch assigned issues
 	if plugin_config.include_assigned then
-		local issues, err = api.fetch_assigned_issues(api_key, plugin_config.team_ids or {})
+		local issues, err =
+			api.fetch_assigned_issues(api_key, plugin_config.team_ids or {}, plugin_config.filter_by_cycle or false)
 		if not issues then
 			return nil, err
 		end

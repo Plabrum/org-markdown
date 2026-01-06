@@ -90,8 +90,9 @@ end
 --- Fetch assigned issues from Linear
 --- @param api_key string Linear API key
 --- @param team_ids table List of team keys (e.g., {"IF", "ENG"}) - empty = all teams
+--- @param filter_by_cycle boolean Only include issues from active cycle
 --- @return table|nil, string|nil Issues array, error message
-function M.fetch_assigned_issues(api_key, team_ids)
+function M.fetch_assigned_issues(api_key, team_ids, filter_by_cycle)
 	-- Build team filter (using team keys, not IDs)
 	local team_filter = ""
 	if #team_ids > 0 then
@@ -102,10 +103,16 @@ function M.fetch_assigned_issues(api_key, team_ids)
 		team_filter = string.format("team: { key: { in: [%s] } },", table.concat(quoted_keys, ","))
 	end
 
+	-- Build cycle filter
+	local cycle_filter = ""
+	if filter_by_cycle then
+		cycle_filter = "cycle: { isActive: { eq: true } },"
+	end
+
 	local query = string.format(
 		[[
 		query {
-			issues(filter: { assignee: { isMe: { eq: true } }, %s }) {
+			issues(filter: { assignee: { isMe: { eq: true } }, %s %s }) {
 				nodes {
 					id
 					identifier
@@ -122,7 +129,8 @@ function M.fetch_assigned_issues(api_key, team_ids)
 			}
 		}
 	]],
-		team_filter
+		team_filter,
+		cycle_filter
 	)
 
 	local data, err = M.execute_graphql_query(api_key, query)
