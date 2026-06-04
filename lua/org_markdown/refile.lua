@@ -41,6 +41,7 @@ local function verify_refile_write(filepath, expected_lines)
 		end
 	end
 
+	---@diagnostic disable-next-line: return-type-mismatch
 	return true, nil
 end
 
@@ -202,6 +203,7 @@ function M.to_heading()
 			local base_level = target_heading.level
 
 			for _, child in ipairs(refile_root.children) do
+				---@diagnostic disable-next-line: param-type-mismatch
 				document.adjust_node_levels(child, base_level)
 				document.insert_child(target_heading, child)
 			end

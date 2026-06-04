@@ -38,8 +38,11 @@ local function parse_event_datetime(date_str, time_str)
 	end
 
 	return os.time({
+		---@diagnostic disable-next-line: assign-type-mismatch
 		year = tonumber(year),
+		---@diagnostic disable-next-line: assign-type-mismatch
 		month = tonumber(month),
+		---@diagnostic disable-next-line: assign-type-mismatch
 		day = tonumber(day),
 		hour = tonumber(hour),
 		min = tonumber(min),

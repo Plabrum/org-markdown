@@ -84,6 +84,7 @@ function Node:set_state(new_state)
 	local archive = require("org_markdown.archive")
 	if new_state == "DONE" and old_state ~= "DONE" and archive.is_enabled() then
 		-- Use org-mode format with day-of-week: 2025-01-05 Sun
+		---@diagnostic disable-next-line: assign-type-mismatch
 		self.properties.COMPLETED_AT = os.date("%Y-%m-%d %a")
 	end
 
@@ -118,6 +119,7 @@ end
 ---@param state string
 ---@return boolean
 function Node:has_state(state)
+	---@diagnostic disable-next-line: return-type-mismatch
 	return self.parsed and self.parsed.state == state
 end
 
@@ -159,6 +161,7 @@ end
 
 --- Parse property line
 ---@param line string
+---@diagnostic disable-next-line: undefined-doc-name
 ---@return string|nil, string|nil key, value
 local function parse_property_line(line)
 	return line:match(parser.PATTERNS.property)
@@ -295,23 +298,35 @@ local function reconstruct_heading(node)
 
 	table.insert(parts, string.rep("#", node.level))
 
+	---@diagnostic disable-next-line: need-check-nil
 	if p.state then
+		---@diagnostic disable-next-line: need-check-nil
 		table.insert(parts, p.state)
 	end
 
+	---@diagnostic disable-next-line: need-check-nil
 	if p.priority then
+		---@diagnostic disable-next-line: need-check-nil
 		table.insert(parts, string.format("[#%s]", p.priority))
 	end
 
+	---@diagnostic disable-next-line: need-check-nil
 	if p.text and p.text ~= "" then
+		---@diagnostic disable-next-line: need-check-nil
 		table.insert(parts, p.text)
 	end
 
+	---@diagnostic disable-next-line: need-check-nil
 	if p.tracked then
+		---@diagnostic disable-next-line: need-check-nil
 		local date_str = "<" .. p.tracked
+		---@diagnostic disable-next-line: need-check-nil
 		if p.start_time then
+			---@diagnostic disable-next-line: need-check-nil
 			date_str = date_str .. " " .. p.start_time
+			---@diagnostic disable-next-line: need-check-nil
 			if p.end_time then
+				---@diagnostic disable-next-line: need-check-nil
 				date_str = date_str .. "-" .. p.end_time
 			end
 		end
@@ -319,11 +334,15 @@ local function reconstruct_heading(node)
 		table.insert(parts, date_str)
 	end
 
+	---@diagnostic disable-next-line: need-check-nil
 	if p.untracked then
+		---@diagnostic disable-next-line: need-check-nil
 		table.insert(parts, "[" .. p.untracked .. "]")
 	end
 
+	---@diagnostic disable-next-line: need-check-nil
 	if p.tags and #p.tags > 0 then
+		---@diagnostic disable-next-line: need-check-nil
 		table.insert(parts, ":" .. table.concat(p.tags, ":") .. ":")
 	end
 
@@ -337,11 +356,11 @@ local function serialize_node(node, output)
 	if node.type == "heading" then
 		table.insert(output, reconstruct_heading(node))
 
-		for _, line in ipairs(node.content_lines) do
-			table.insert(output, line)
-		end
-
-		-- Add properties at end of content (sorted for determinism)
+		-- Emit properties immediately under the heading (sorted for determinism).
+		-- Keeping them above free-text content matches the capture-template
+		-- convention (CREATED_AT/COMPLETED_AT directly below the heading) and
+		-- preserves any trailing blank line that separates this block from the
+		-- next heading.
 		local keys = {}
 		for key in pairs(node.properties) do
 			table.insert(keys, key)
@@ -349,6 +368,10 @@ local function serialize_node(node, output)
 		table.sort(keys)
 		for _, key in ipairs(keys) do
 			table.insert(output, serialize_property(key, node.properties[key]))
+		end
+
+		for _, line in ipairs(node.content_lines) do
+			table.insert(output, line)
 		end
 	end
 

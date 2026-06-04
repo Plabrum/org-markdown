@@ -13,23 +13,35 @@ local function reconstruct_heading(node)
 
 	table.insert(parts, string.rep("#", node.level))
 
+	---@diagnostic disable-next-line: need-check-nil
 	if p.state then
+		---@diagnostic disable-next-line: need-check-nil
 		table.insert(parts, p.state)
 	end
 
+	---@diagnostic disable-next-line: need-check-nil
 	if p.priority then
+		---@diagnostic disable-next-line: need-check-nil
 		table.insert(parts, string.format("[#%s]", p.priority))
 	end
 
+	---@diagnostic disable-next-line: need-check-nil
 	if p.text and p.text ~= "" then
+		---@diagnostic disable-next-line: need-check-nil
 		table.insert(parts, p.text)
 	end
 
+	---@diagnostic disable-next-line: need-check-nil
 	if p.tracked then
+		---@diagnostic disable-next-line: need-check-nil
 		local date_str = "<" .. p.tracked
+		---@diagnostic disable-next-line: need-check-nil
 		if p.start_time then
+			---@diagnostic disable-next-line: need-check-nil
 			date_str = date_str .. " " .. p.start_time
+			---@diagnostic disable-next-line: need-check-nil
 			if p.end_time then
+				---@diagnostic disable-next-line: need-check-nil
 				date_str = date_str .. "-" .. p.end_time
 			end
 		end
@@ -37,11 +49,15 @@ local function reconstruct_heading(node)
 		table.insert(parts, date_str)
 	end
 
+	---@diagnostic disable-next-line: need-check-nil
 	if p.untracked then
+		---@diagnostic disable-next-line: need-check-nil
 		table.insert(parts, "[" .. p.untracked .. "]")
 	end
 
+	---@diagnostic disable-next-line: need-check-nil
 	if p.tags and #p.tags > 0 then
+		---@diagnostic disable-next-line: need-check-nil
 		table.insert(parts, ":" .. table.concat(p.tags, ":") .. ":")
 	end
 

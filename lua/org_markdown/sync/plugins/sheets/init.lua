@@ -508,6 +508,7 @@ end
 --- @param values table Array of cell values
 --- @param auth_token string OAuth access token
 --- @param quota_project string|nil Google Cloud quota project ID
+---@diagnostic disable-next-line: undefined-doc-name
 --- @return boolean, string|nil Success, error message
 local function update_sheet_row(spreadsheet_id, sheet_name, row_number, values, auth_token, quota_project)
 	local manager = require("org_markdown.sync.manager")
@@ -531,16 +532,19 @@ local function update_sheet_row(spreadsheet_id, sheet_name, row_number, values, 
 	local output_lines, err = manager.execute_command(cmd)
 
 	if not output_lines then
+		---@diagnostic disable-next-line: missing-return-value
 		return false, "Failed to update row " .. row_number .. ": " .. (err or "Unknown error")
 	end
 
 	local output = table.concat(output_lines, "\n")
 	local ok, response = pcall(vim.fn.json_decode, output)
 	if not ok or response.error then
+		---@diagnostic disable-next-line: missing-return-value
 		return false,
 			"Failed to update row " .. row_number .. ": " .. (response.error and response.error.message or "Unknown error")
 	end
 
+	---@diagnostic disable-next-line: missing-return-value
 	return true, nil
 end
 
@@ -646,6 +650,7 @@ function M.pull()
 	end
 
 	-- Fetch sheet data from Google Sheets API
+	---@diagnostic disable-next-line: param-type-mismatch
 	local values, err = fetch_sheet_data(spreadsheet_id, plugin_config.sheet_name, auth_param, use_api_key, quota_project)
 
 	if not values then
@@ -734,7 +739,7 @@ function M.push()
 		return
 	end
 
-	local rows = parse_sheet_response(sheet_data)
+	local rows = sheet_data -- fetch_sheet_data already returns the raw 2D array (row 1 = headers)
 	if #rows == 0 then
 		vim.notify("Sheets push failed: sheet is empty", vim.log.levels.ERROR)
 		return

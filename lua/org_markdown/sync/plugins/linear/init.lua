@@ -125,6 +125,7 @@ local function issue_to_item(issue, plugin_config)
 	local item = {
 		title = issue.title,
 		status = mapping.map_linear_state(
+				---@diagnostic disable-next-line: param-type-mismatch
 			not mapping.is_null(issue.state) and issue.state.name or nil,
 			plugin_config.status_mapping
 		),

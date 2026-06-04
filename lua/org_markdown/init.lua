@@ -59,7 +59,8 @@ function M.setup(opts)
 	local config = require("org_markdown.config")
 	if config.archive and config.archive.enabled and config.archive.auto_archive then
 		local archive = require("org_markdown.archive")
-		archive.start_auto_archive()
+		-- Silent on startup; the timer only notifies when it actually archives something
+		archive.start_auto_archive({ silent = true })
 	end
 end
 

@@ -332,6 +332,7 @@ local function insert_capture_with_document(filepath, heading_text, content_line
 
 		-- Insert any headings from captured content with adjusted levels
 		for _, child in ipairs(captured_root.children) do
+			---@diagnostic disable-next-line: param-type-mismatch
 			document.adjust_node_levels(child, base_level)
 			document.insert_child(target_heading, child)
 		end

@@ -38,6 +38,7 @@ local M = {
 -- =========================================================================
 
 --- Get list of all available calendars from Calendar.app (using Swift helper)
+---@diagnostic disable-next-line: undefined-doc-name
 --- @return table|nil, string|nil calendar_names, error
 local function get_available_calendars()
 	local manager = require("org_markdown.sync.manager")
@@ -48,6 +49,7 @@ local function get_available_calendars()
 
 	-- Check if Swift script exists
 	if vim.fn.filereadable(swift_script) == 0 then
+		---@diagnostic disable-next-line: missing-return-value
 		return nil, "Calendar Swift helper not found: " .. swift_script
 	end
 
@@ -60,14 +62,17 @@ local function get_available_calendars()
 		if error_msg == "" or error_msg:match("^Command failed") then
 			error_msg = "Calendar access denied. Grant permissions in System Preferences > Privacy & Security"
 		end
+		---@diagnostic disable-next-line: missing-return-value
 		return nil, error_msg
 	end
 
 	if #output == 0 then
+		---@diagnostic disable-next-line: missing-return-value
 		return {}, nil
 	end
 
 	-- Each line is a calendar name
+	---@diagnostic disable-next-line: missing-return-value
 	return output, nil
 end
 
@@ -75,6 +80,7 @@ end
 --- @param calendars table List of calendar names to sync
 --- @param start_date string YYYY-MM-DD format
 --- @param end_date string YYYY-MM-DD format
+---@diagnostic disable-next-line: undefined-doc-name
 --- @return table|nil, string|nil events, error
 local function fetch_calendar_events(calendars, start_date, end_date)
 	local manager = require("org_markdown.sync.manager")
@@ -82,6 +88,7 @@ local function fetch_calendar_events(calendars, start_date, end_date)
 	-- Convert YYYY-MM-DD to day offset from today
 	local function days_from_today(iso_date)
 		local year, month, day = iso_date:match("(%d%d%d%d)-(%d%d)-(%d%d)")
+		---@diagnostic disable-next-line: assign-type-mismatch
 		local target_time = os.time({ year = tonumber(year), month = tonumber(month), day = tonumber(day) })
 		local today_time = os.time()
 		return math.floor((target_time - today_time) / 86400)
@@ -99,6 +106,7 @@ local function fetch_calendar_events(calendars, start_date, end_date)
 
 	-- Check if Swift script exists
 	if vim.fn.filereadable(swift_script) == 0 then
+		---@diagnostic disable-next-line: missing-return-value
 		return nil, "Calendar Swift helper not found: " .. swift_script
 	end
 
@@ -110,9 +118,11 @@ local function fetch_calendar_events(calendars, start_date, end_date)
 
 	if not output then
 		local error_msg = err or "Swift calendar helper failed"
+		---@diagnostic disable-next-line: missing-return-value
 		return nil, error_msg
 	end
 
+	---@diagnostic disable-next-line: missing-return-value
 	return output, nil
 end
 
@@ -220,6 +230,7 @@ end
 
 --- Calculate date range based on config
 --- @param plugin_config table Plugin configuration
+---@diagnostic disable-next-line: undefined-doc-name
 --- @return string, string start_date, end_date (YYYY-MM-DD format)
 local function calculate_date_range(plugin_config)
 	local days_behind = plugin_config.days_behind or 0
@@ -315,6 +326,7 @@ local function update_item_with_uid(file, line_num, uid)
 
 	-- Set last synced timestamp as property
 	local timestamp = os.date("%Y-%m-%d %H:%M")
+	---@diagnostic disable-next-line: param-type-mismatch
 	node:set_property("LAST_SYNCED", timestamp)
 
 	-- Write back to file
@@ -434,11 +446,13 @@ end
 
 --- Update existing event in Calendar.app via Swift script
 --- @param item table Item with uid, title, start_date, start_time, end_time, all_day, file, line
+---@diagnostic disable-next-line: undefined-doc-name
 --- @return boolean, string|nil Success, error message (failure)
 local function update_calendar_event(item)
 	local manager = require("org_markdown.sync.manager")
 
 	if not item.uid then
+		---@diagnostic disable-next-line: missing-return-value
 		return false, "No UID provided for update"
 	end
 
@@ -450,12 +464,14 @@ local function update_calendar_event(item)
 	local swift_script = script_dir .. "/calendar_push.swift"
 
 	if vim.fn.filereadable(swift_script) == 0 then
+		---@diagnostic disable-next-line: missing-return-value
 		return false, "Calendar push script not found"
 	end
 
 	-- Convert dates to ISO format
 	local start_iso = datetime.to_iso_string(item.start_date)
 	if not start_iso then
+		---@diagnostic disable-next-line: missing-return-value
 		return false, "Invalid start date"
 	end
 
@@ -515,6 +531,7 @@ local function update_calendar_event(item)
 				)
 			end)
 		end
+		---@diagnostic disable-next-line: missing-return-value
 		return false, err or "Failed to update event"
 	end
 
@@ -523,6 +540,7 @@ local function update_calendar_event(item)
 		update_item_with_uid(item.file, item.line, item.uid)
 	end)
 
+	---@diagnostic disable-next-line: missing-return-value
 	return true, nil
 end
 
@@ -582,18 +600,31 @@ function M.push_to_calendar()
 
 		local queries = require("org_markdown.utils.queries")
 		local document = require("org_markdown.utils.document")
+		local manager = require("org_markdown.sync.manager")
 
 		-- Get all markdown files
 		local files = queries.find_markdown_files()
 
+		-- Build a set of all auto-managed sync files across every registered plugin
+		-- (calendar.md, linear.md, sheets.md, ...). These files are fully replaced on
+		-- each sync, so any CALENDAR_ID we write back is wiped on the next pull. Pushing
+		-- them creates duplicate events forever (e.g. Linear sprints re-added weekly).
+		local sync_filenames = {}
+		for _, p in pairs(manager.plugins) do
+			local pc = config.sync and config.sync.plugins and config.sync.plugins[p.name]
+			local sf = (pc and pc.sync_file) or p.sync_file
+			if sf then
+				sync_filenames[vim.fn.fnamemodify(vim.fn.expand(sf), ":t")] = true
+			end
+		end
+
 		-- Scan for items with tracked dates using document model
 		local items_to_push = {}
-		local sync_filename = vim.fn.fnamemodify(vim.fn.expand(plugin_config.sync_file), ":t")
 
 		for _, file in ipairs(files) do
-			-- Skip sync file (calendar.md)
+			-- Skip auto-managed sync files
 			local filename = vim.fn.fnamemodify(file, ":t")
-			if filename == sync_filename then
+			if sync_filenames[filename] then
 				goto continue
 			end
 
@@ -746,13 +777,17 @@ function M.pull()
 		},
 	}
 
-	-- ========== PUSH: markdown → Calendar.app ==========
-	-- Push user markdown items to Calendar.app (if enabled)
-	if plugin_config.push and plugin_config.push.enabled then
-		M.push_to_calendar()
-	end
+	-- NOTE: Push (markdown → Calendar.app) is intentionally NOT triggered here.
+	-- Coupling push to pull meant every startup/background pull ran a full
+	-- filesystem scan + Calendar.app writes, which blocked first paint and
+	-- re-created events from auto-managed files. Push now runs only on an
+	-- explicit sync (see manager.sync_plugin) via M.push below.
 
 	return pull_result
 end
+
+-- Expose push under the standard plugin interface name so the manager can
+-- trigger it after an explicit sync (and so BufWritePost auto-push can find it).
+M.push = M.push_to_calendar
 
 return M

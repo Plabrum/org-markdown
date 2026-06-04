@@ -133,7 +133,7 @@ T["serialize - round trips nested structure"] = function()
 	end
 end
 
-T["serialize - includes properties at end of content"] = function()
+T["serialize - emits properties directly under heading"] = function()
 	local lines = {
 		"## DONE Task",
 		"Content",
@@ -142,8 +142,8 @@ T["serialize - includes properties at end of content"] = function()
 	root.children[1].properties.COMPLETED_AT = "2025-12-22 Sun"
 	local output = document.serialize(root)
 	MiniTest.expect.equality(output[1], "## DONE Task")
-	MiniTest.expect.equality(output[2], "Content")
-	MiniTest.expect.equality(output[3], "COMPLETED_AT: [2025-12-22 Sun]")
+	MiniTest.expect.equality(output[2], "COMPLETED_AT: [2025-12-22 Sun]")
+	MiniTest.expect.equality(output[3], "Content")
 end
 
 T["serialize - reconstructs dirty heading"] = function()
@@ -329,7 +329,7 @@ end
 -- Integration Tests
 -- ============================================================================
 
-T["integration - cycle to DONE adds COMPLETED_AT at content end"] = function()
+T["integration - cycle to DONE adds COMPLETED_AT under heading"] = function()
 	local lines = {
 		"## TODO Task",
 		"Some content",
@@ -345,8 +345,8 @@ T["integration - cycle to DONE adds COMPLETED_AT at content end"] = function()
 
 	local output = document.serialize(root)
 	MiniTest.expect.equality(output[1], "## DONE Task")
-	MiniTest.expect.equality(output[2], "Some content")
-	MiniTest.expect.equality(output[3], "COMPLETED_AT: [2025-12-22 Sun]")
+	MiniTest.expect.equality(output[2], "COMPLETED_AT: [2025-12-22 Sun]")
+	MiniTest.expect.equality(output[3], "Some content")
 	MiniTest.expect.equality(output[4], "## Next heading")
 end
 
@@ -368,8 +368,8 @@ T["integration - nested heading preserves structure"] = function()
 
 	local output = document.serialize(root)
 	MiniTest.expect.equality(output[1], "## DONE Parent")
-	MiniTest.expect.equality(output[2], "Parent content")
-	MiniTest.expect.equality(output[3], "COMPLETED_AT: [2025-12-22 Sun]")
+	MiniTest.expect.equality(output[2], "COMPLETED_AT: [2025-12-22 Sun]")
+	MiniTest.expect.equality(output[3], "Parent content")
 	MiniTest.expect.equality(output[4], "### Child")
 	MiniTest.expect.equality(output[5], "Child content")
 	MiniTest.expect.equality(output[6], "## Sibling")

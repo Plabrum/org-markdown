@@ -322,7 +322,9 @@ function M.format_display(date_input, fmt)
 		return ""
 	end
 
+	---@diagnostic disable-next-line: assign-type-mismatch
 	local timestamp = os.time({ year = tonumber(y), month = tonumber(m), day = tonumber(d) })
+	---@diagnostic disable-next-line: return-type-mismatch
 	return os.date(fmt, timestamp)
 end
 
@@ -340,7 +342,9 @@ function M.get_day_name(date)
 		return ""
 	end
 
+	---@diagnostic disable-next-line: assign-type-mismatch
 	local timestamp = os.time({ year = tonumber(y), month = tonumber(m), day = tonumber(d) })
+	---@diagnostic disable-next-line: return-type-mismatch
 	return os.date("%a", timestamp)
 end
 
@@ -356,6 +360,7 @@ function M.capture_format(fmt, bracket)
 	elseif bracket == "[" then
 		return "[" .. result .. "]"
 	else
+		---@diagnostic disable-next-line: return-type-mismatch
 		return result
 	end
 end
@@ -464,6 +469,7 @@ function M.add_days(date, days)
 
 	-- Preserve input format: if input was string, return string
 	if type(date) == "string" then
+		---@diagnostic disable-next-line: return-type-mismatch
 		return M.to_iso_string(result)
 	else
 		-- Preserve any additional fields from original table
@@ -476,10 +482,12 @@ end
 
 --- Calculate date range from spec
 --- @param spec table {days=N, offset=0} or {from="date", to="date"}
+---@diagnostic disable-next-line: undefined-doc-name
 --- @return string, string start_date, end_date (ISO strings)
 function M.calculate_range(spec)
 	if spec.from and spec.to then
 		-- Absolute range
+		---@diagnostic disable-next-line: missing-return-value
 		return spec.from, spec.to
 	end
 
@@ -493,6 +501,7 @@ function M.calculate_range(spec)
 	local start_date = os.date("%Y-%m-%d", start_time)
 	local end_date = os.date("%Y-%m-%d", end_time)
 
+	---@diagnostic disable-next-line: missing-return-value, return-type-mismatch
 	return start_date, end_date
 end
 

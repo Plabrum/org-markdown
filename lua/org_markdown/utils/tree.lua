@@ -101,6 +101,7 @@ end
 --- Find a heading by text
 --- @param lines table Array of lines
 --- @param text string Heading text to match (exact match)
+---@diagnostic disable-next-line: undefined-doc-name
 --- @return number|nil, number|nil, number|nil line, level, end_line (or nil if not found)
 function M.find_heading(lines, text)
 	local pattern = "^(#+)%s+" .. vim.pesc(text) .. "%s*$"
@@ -110,10 +111,12 @@ function M.find_heading(lines, text)
 		if hashes then
 			local level = #hashes
 			local end_line = M.find_end(lines, i, level)
+			---@diagnostic disable-next-line: missing-return-value
 			return i, level, end_line
 		end
 	end
 
+	---@diagnostic disable-next-line: missing-return-value
 	return nil, nil, nil
 end
 

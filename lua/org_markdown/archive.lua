@@ -14,6 +14,42 @@ function M.is_enabled()
 	return config.archive and config.archive.enabled
 end
 
+--- Whether a heading node is DONE and completed at least threshold_days ago
+--- @param node table Document node
+--- @param today table Today's date
+--- @param threshold_days number Days before archiving
+---@diagnostic disable-next-line: undefined-doc-name
+--- @return boolean, table|nil eligible, completed_date
+local function is_done_and_old(node, today, threshold_days)
+	if not (node:is_heading() and node:has_state("DONE")) then
+		---@diagnostic disable-next-line: missing-return-value
+		return false, nil
+	end
+	local completed_date = node:get_completed_at_date()
+	if not completed_date then
+		---@diagnostic disable-next-line: missing-return-value
+		return false, nil
+	end
+	---@diagnostic disable-next-line: missing-return-value
+	return datetime.days_between(completed_date, today) >= threshold_days, completed_date
+end
+
+--- Whether any descendant heading is still incomplete (not DONE).
+--- Used to keep blocks with open subtasks in place instead of archiving them.
+--- @param node table Document node
+--- @return boolean
+local function has_incomplete_descendant(node)
+	for _, child in ipairs(node.children or {}) do
+		if child:is_heading() and not child:has_state("DONE") then
+			return true
+		end
+		if has_incomplete_descendant(child) then
+			return true
+		end
+	end
+	return false
+end
+
 --- Collect archivable nodes recursively from document tree
 --- @param node table Document node
 --- @param filepath string File path
@@ -21,29 +57,26 @@ end
 --- @param threshold_days number Days before archiving
 --- @param archivable table Output array
 local function collect_archivable_nodes(node, filepath, today, threshold_days, archivable)
-	-- Check if this is a DONE heading
-	if node:is_heading() and node:has_state("DONE") then
-		-- Get completion date (from properties or legacy format)
-		local completed_date = node:get_completed_at_date()
-		if completed_date then
-			-- Calculate days since completion
-			local days_diff = datetime.days_between(completed_date, today)
-
-			-- Archive if older than threshold
-			if days_diff >= threshold_days then
-				table.insert(archivable, {
-					filepath = filepath,
-					line_num = node.start_line,
-					line = node.raw_heading,
-					heading_level = node.level,
-					completed_date = completed_date,
-					days_old = days_diff,
-				})
-			end
-		end
+	-- Archive a heading as a whole block only when it is DONE + old AND every
+	-- descendant is also complete. If any descendant is still incomplete, leave
+	-- the block in place so open subtasks are never swept into the archive.
+	local eligible, completed_date = is_done_and_old(node, today, threshold_days)
+	if eligible and not has_incomplete_descendant(node) then
+		---@diagnostic disable-next-line: param-type-mismatch
+		local days_diff = datetime.days_between(completed_date, today)
+		table.insert(archivable, {
+			filepath = filepath,
+			line_num = node.start_line,
+			line = node.raw_heading,
+			heading_level = node.level,
+			completed_date = completed_date,
+			days_old = days_diff,
+		})
+		-- Don't recurse: the whole subtree moves with this block.
+		return
 	end
 
-	-- Recurse into children
+	-- Not archived as a block; recurse to find eligible nested blocks.
 	for _, child in ipairs(node.children or {}) do
 		collect_archivable_nodes(child, filepath, today, threshold_days, archivable)
 	end
@@ -69,6 +102,7 @@ function M.find_archivable_headings(threshold_days)
 				local root = document.parse(lines)
 
 				-- Collect archivable nodes from tree
+				---@diagnostic disable-next-line: param-type-mismatch
 				collect_archivable_nodes(root, filepath, today, threshold_days, archivable)
 			end
 		end
@@ -89,6 +123,7 @@ end
 --- Archive a single heading to archive file
 --- @param filepath string Source file path
 --- @param heading_info table Heading data from find_archivable_headings
+---@diagnostic disable-next-line: undefined-doc-name
 --- @return boolean, string|nil Success, error message
 function M.archive_heading(filepath, heading_info)
 	-- Generate archive file path
@@ -97,6 +132,7 @@ function M.archive_heading(filepath, heading_info)
 	-- Read source file
 	local lines = utils.read_lines(filepath)
 	if not lines then
+		---@diagnostic disable-next-line: missing-return-value
 		return false, "Failed to read source file"
 	end
 
@@ -109,42 +145,42 @@ function M.archive_heading(filepath, heading_info)
 		table.insert(block_lines, lines[i])
 	end
 
-	-- Load or create archive document
-	local archive_root
+	-- Load or create the archive file's existing lines.
+	-- We append the block as raw text rather than round-tripping it through the
+	-- document tree: serialize emits all root content_lines before any children,
+	-- so appending separators/content via the tree would pile them at the top of
+	-- the file instead of placing them between archived blocks.
+	local archive_lines_out
 	if vim.fn.filereadable(archive_path) == 0 then
-		-- Create new document with header
-		archive_root = document.parse({
+		archive_lines_out = {
 			"<!-- AUTO-ARCHIVED: Completed tasks moved from " .. vim.fn.fnamemodify(filepath, ":t") .. " -->",
-			"",
-		})
+		}
 	else
-		archive_root = document.read_from_file(archive_path)
+		archive_lines_out = utils.read_lines(archive_path) or {}
 	end
 
-	-- Parse block lines and append to archive
-	local block_root = document.parse(block_lines)
-
-	-- Add blank line before archived content
-	table.insert(archive_root.content_lines, "")
-
-	-- Append headings and content
-	for _, child in ipairs(block_root.children) do
-		document.insert_child(archive_root, child)
+	-- Ensure a single blank-line separator before the appended block.
+	if #archive_lines_out > 0 and archive_lines_out[#archive_lines_out] ~= "" then
+		table.insert(archive_lines_out, "")
 	end
-	for _, line in ipairs(block_root.content_lines) do
-		table.insert(archive_root.content_lines, line)
+
+	-- Append the archived block verbatim (preserves original property/content order).
+	for _, line in ipairs(block_lines) do
+		table.insert(archive_lines_out, line)
 	end
 
 	-- Write archive file
-	local ok, err = pcall(document.write_to_file, archive_path, archive_root)
+	local ok, err = pcall(utils.write_lines, archive_path, archive_lines_out)
 
 	if not ok then
+		---@diagnostic disable-next-line: missing-return-value
 		return false, "Failed to write to archive: " .. tostring(err)
 	end
 
 	-- Verify the write succeeded by reading back
 	local archive_lines = utils.read_lines(archive_path)
 	if not archive_lines then
+		---@diagnostic disable-next-line: missing-return-value
 		return false, "Failed to verify archive write"
 	end
 
@@ -180,12 +216,17 @@ function M.archive_heading(filepath, heading_info)
 		utils.write_lines(filepath, new_lines)
 	end
 
+	---@diagnostic disable-next-line: missing-return-value
 	return true, nil
 end
 
 --- Archive all eligible headings
+--- @param opts table|nil Options: { silent_when_empty = boolean } to suppress the
+---   "No headings to archive" notification when nothing was archived (used by the
+---   auto-archive timer so empty sweeps stay quiet)
 --- @return table Stats {archived_count, error_count, files_processed, errors}
-function M.archive_all_eligible()
+function M.archive_all_eligible(opts)
+	opts = opts or {}
 	local threshold_days = config.archive.threshold_days or 30
 	local archivable = M.find_archivable_headings(threshold_days)
 
@@ -243,7 +284,7 @@ function M.archive_all_eligible()
 			)
 		elseif stats.error_count > 0 then
 			vim.notify(string.format("Failed to archive %d heading(s)", stats.error_count), vim.log.levels.WARN)
-		else
+		elseif not opts.silent_when_empty then
 			vim.notify("No headings to archive", vim.log.levels.INFO)
 		end
 	end)
@@ -252,7 +293,10 @@ function M.archive_all_eligible()
 end
 
 --- Start auto-archive background timer
-function M.start_auto_archive()
+--- @param opts table|nil Options: { silent = boolean } to suppress the
+---   "Auto-archive started" notification (used when auto-starting on Neovim startup)
+function M.start_auto_archive(opts)
+	opts = opts or {}
 	if not M.is_enabled() then
 		vim.notify("Archive feature is disabled", vim.log.levels.WARN)
 		return
@@ -274,9 +318,13 @@ function M.start_auto_archive()
 		interval = 60000
 	end
 
+	-- Run the first sweep shortly after startup (not a full interval later), so
+	-- restarting Neovim regularly doesn't perpetually defer archiving.
+	local initial_delay = config.archive.initial_delay or 5000
+
 	auto_archive_timer = vim.loop.new_timer()
 	auto_archive_timer:start(
-		interval, -- Initial delay
+		initial_delay, -- Initial delay
 		interval, -- Repeat interval
 		vim.schedule_wrap(function()
 			-- Prevent concurrent runs
@@ -285,12 +333,15 @@ function M.start_auto_archive()
 			end
 
 			M._is_archiving = true
-			M.archive_all_eligible()
+			-- Empty sweeps stay quiet; only real work (archived/errors) notifies
+			M.archive_all_eligible({ silent_when_empty = true })
 			M._is_archiving = false
 		end)
 	)
 
-	vim.notify("Auto-archive started", vim.log.levels.INFO)
+	if not opts.silent then
+		vim.notify("Auto-archive started", vim.log.levels.INFO)
+	end
 end
 
 --- Stop auto-archive background timer

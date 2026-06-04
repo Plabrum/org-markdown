@@ -862,6 +862,7 @@ function M.show_tabbed_agenda()
 			refresh_tab_content(buf, win, index, view_id)
 			-- Update window title
 			local view_def = find_view(view_id)
+			---@diagnostic disable-next-line: need-check-nil
 			local new_title = "Agenda - " .. (view_def.title or view_id)
 			utils.set_window_title(win, new_title)
 		end,

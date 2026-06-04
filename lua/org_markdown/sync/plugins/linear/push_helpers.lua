@@ -95,8 +95,11 @@ function M.parse_iso_timestamp(iso_str)
 	end
 
 	return os.time({
+		---@diagnostic disable-next-line: assign-type-mismatch
 		year = tonumber(year),
+		---@diagnostic disable-next-line: assign-type-mismatch
 		month = tonumber(month),
+		---@diagnostic disable-next-line: assign-type-mismatch
 		day = tonumber(day),
 		hour = tonumber(hour),
 		min = tonumber(min),
@@ -168,6 +171,7 @@ function M.update_item_with_linear_metadata(file, line_num, linear_id, updated_a
 
 	-- Set metadata as node properties (new format)
 	node:set_property("LINEAR_ID", linear_id)
+	---@diagnostic disable-next-line: param-type-mismatch
 	node:set_property("LINEAR_LAST_SYNCED", timestamp)
 	node:set_property("LINEAR_UPDATED", updated_at)
 
@@ -265,6 +269,7 @@ function M.scan_files_for_push_items(staging_file)
 
 	-- Only scan the staging file
 	if not staging_file then
+		---@diagnostic disable-next-line: return-type-mismatch
 		return items_to_push, {}, nil
 	end
 

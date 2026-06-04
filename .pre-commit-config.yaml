@@ -7,3 +7,11 @@ repos:
         language: system
         types: [lua]
         files: ^lua/
+
+      - id: lua-language-server
+        name: LuaLS Check
+        entry: lua-language-server
+        language: system
+        pass_filenames: false
+        files: ^lua/.*\.lua$
+        args: ["--check", "./lua", "--checklevel=Warning", "--configpath=../.luarc.json"]

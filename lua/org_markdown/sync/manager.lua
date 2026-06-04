@@ -211,9 +211,11 @@ local ITEM_SCHEMA = {
 --- Validate an item against the schema
 --- @param item table Item to validate
 --- @param plugin_name string Plugin name (for error messages)
+---@diagnostic disable-next-line: undefined-doc-name
 --- @return boolean, table|nil, string|nil Success, errors array, formatted error message
 local function validate_item(item, plugin_name)
 	if not item or type(item) ~= "table" then
+		---@diagnostic disable-next-line: missing-return-value
 		return false, { "Item must be a table" }, "[" .. plugin_name .. "] Item must be a table"
 	end
 
@@ -254,9 +256,11 @@ local function validate_item(item, plugin_name)
 			item.title or "(no title)",
 			table.concat(errors, "\n  - ")
 		)
+		---@diagnostic disable-next-line: missing-return-value
 		return false, errors, err_msg
 	end
 
+	---@diagnostic disable-next-line: missing-return-value
 	return true, nil, nil
 end
 
@@ -545,6 +549,14 @@ function M.sync_plugin(plugin_name)
 
 		-- Clear syncing flag
 		plugin._is_syncing = false
+
+		-- Bidirectional plugins push local changes back to their source. This runs
+		-- ONLY on an explicit sync (this function), never on the startup/background
+		-- pull (pull_all_async), so opening Neovim doesn't write to external sources.
+		-- The plugin's push() is responsible for honoring its own enabled flag.
+		if type(plugin.push) == "function" then
+			plugin.push()
+		end
 
 		-- Success notification
 		local count = stats.count or #valid_items

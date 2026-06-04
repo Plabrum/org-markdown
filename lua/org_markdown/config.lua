@@ -165,6 +165,7 @@ local M = {
 		enabled = true, -- Enable archiving feature (timestamp addition)
 		auto_archive = false, -- Disable auto-archive by default (user must opt-in)
 		interval = 86400000, -- Check every 24 hours (milliseconds)
+		initial_delay = 5000, -- Delay before first auto-archive sweep after startup (ms)
 		threshold_days = 30, -- Archive DONE items older than 30 days
 		archive_suffix = ".archive", -- Suffix for archive files
 	},
