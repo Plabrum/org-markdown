@@ -1,0 +1,13 @@
+#!/usr/bin/env luajit
+
+-- Standalone org-markdown CLI launcher.
+-- Lives outside lua/ so it escapes the stylua/LuaLS pre-commit hooks; keep it tiny
+-- and put all real logic under lua/org_markdown/cli.
+
+local script = arg[0]
+local dir = script:match("^(.*)[/\\][^/\\]*$") or "."
+local root = dir .. "/.."
+
+package.path = root .. "/lua/?.lua;" .. root .. "/lua/?/init.lua;" .. package.path
+
+os.exit(require("org_markdown.cli").main(arg))
