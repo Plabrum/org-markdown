@@ -2,6 +2,108 @@ local M = {}
 
 M.VERSION = "0.1.0"
 
+-- Item fields carried into the JSON output. Everything the in-editor renderer
+-- and formatters read off an item is preserved; the transient `node` field
+-- (a document tree node with methods/back-refs) is deliberately dropped so the
+-- result is a clean, acyclic, serializable value.
+local ITEM_FIELDS = {
+	"title",
+	"state",
+	"priority",
+	"date",
+	"start_time",
+	"end_time",
+	"all_day",
+	"line",
+	"file",
+	"tags",
+	"source",
+	"depth",
+}
+
+-- Recursively project an agenda item onto its serializable fields.
+-- Array-typed fields (`tags`, `children`) are marked via `json.array` so they
+-- always emit as JSON arrays, even when empty (never `{}`).
+local function serialize_item(item)
+	local json = require("org_markdown.utils.json")
+
+	local out = {}
+	for _, field in ipairs(ITEM_FIELDS) do
+		out[field] = item[field]
+	end
+	out.tags = json.array(item.tags or {})
+
+	local children = json.array({})
+	for _, child in ipairs(item.children or {}) do
+		children[#children + 1] = serialize_item(child)
+	end
+	out.children = children
+
+	return out
+end
+
+-- Project a compute_view result into a JSON-safe table.
+local function serialize_view(computed)
+	local json = require("org_markdown.utils.json")
+
+	local groups = json.array({})
+	for _, group in ipairs(computed.groups) do
+		local items = json.array({})
+		for _, item in ipairs(group.items) do
+			items[#items + 1] = serialize_item(item)
+		end
+		groups[#groups + 1] = { key = group.key, items = items }
+	end
+
+	return {
+		view_id = computed.view_id,
+		title = computed.title,
+		groups = groups,
+	}
+end
+
+-- Hand-parse `--view <id>` / `--view=<id>` from a command's args.
+local function parse_view_flag(args)
+	local i = 1
+	while i <= #args do
+		local arg = args[i]
+		local inline = arg:match("^%-%-view=(.+)$")
+		if inline then
+			return inline
+		elseif arg == "--view" then
+			return args[i + 1]
+		end
+		i = i + 1
+	end
+	return nil
+end
+
+-- Run the agenda pipeline for a configured view and print it as JSON.
+local function run_agenda(args)
+	local view_id = parse_view_flag(args)
+	if not view_id then
+		io.stderr:write("org agenda: missing required --view <id>\n")
+		return 1
+	end
+
+	local config = require("org_markdown.config")
+	config.setup({})
+
+	local views = config.agendas and config.agendas.views or {}
+	local view_def = views[view_id]
+	if not view_def then
+		io.stderr:write("org agenda: unknown view '" .. view_id .. "'\n")
+		return 1
+	end
+
+	local pipeline = require("org_markdown.agenda.pipeline")
+	local json = require("org_markdown.utils.json")
+
+	local computed = pipeline.compute_view(view_id, view_def)
+	print(json.encode(serialize_view(computed)))
+	return 0
+end
+
 -- Command registry: name -> { description, run }.
 -- `run` receives the pass-through args and returns an integer exit code.
 -- New commands added here self-document in `help_text()`.
@@ -16,6 +118,10 @@ M.commands = {
 			print("org " .. M.VERSION)
 			return 0
 		end,
+	},
+	agenda = {
+		description = "Emit an agenda view as JSON (org agenda --view <id>)",
+		run = run_agenda,
 	},
 }
 

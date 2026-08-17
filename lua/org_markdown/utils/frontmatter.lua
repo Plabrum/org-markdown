@@ -1,3 +1,6 @@
+local compat = require("org_markdown.compat.vim")
+local platform = require("org_markdown.platform")
+
 local M = {}
 
 --- Parse YAML or TOML frontmatter from lines
@@ -49,11 +52,11 @@ function M.parse_frontmatter(lines)
 		if name_yaml then
 			-- Remove quotes if present
 			frontmatter.name = name_yaml:match('^"(.-)"$') or name_yaml:match("^'(.-)'$") or name_yaml
-			frontmatter.name = vim.trim(frontmatter.name)
+			frontmatter.name = compat.trim(frontmatter.name)
 		elseif name_toml then
 			-- Remove quotes if present
 			frontmatter.name = name_toml:match('^"(.-)"$') or name_toml:match("^'(.-)'$") or name_toml
-			frontmatter.name = vim.trim(frontmatter.name)
+			frontmatter.name = compat.trim(frontmatter.name)
 		end
 	end
 
@@ -78,7 +81,8 @@ function M.get_display_name(filepath, lines)
 	end
 
 	-- Fallback to filename without extension
-	return vim.fn.fnamemodify(filepath, ":t:r")
+	local base = platform.path.basename(filepath)
+	return (base:gsub("%.[^.]*$", ""))
 end
 
 return M

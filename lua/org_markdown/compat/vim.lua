@@ -104,6 +104,40 @@ function M.tbl_contains(t, value)
 	return false
 end
 
+--- Shallow-merge two or more tables into a new table, mirroring `vim.tbl_extend`.
+--- `behavior` decides how duplicate keys resolve: "force" (later wins), "keep"
+--- (earlier wins), or "error" (raise on collision). Only a shallow merge is
+--- implemented — the sole in-tree caller (agenda hierarchy filtering) uses
+--- "force" to copy an item before swapping its `children`, which needs no depth.
+---@param behavior "error"|"keep"|"force"
+---@param ... table
+---@return table
+function M.tbl_extend(behavior, ...)
+	if has_vim then
+		return vim.tbl_extend(behavior, ...)
+	end
+
+	local result = {}
+	local n = select("#", ...)
+	for i = 1, n do
+		local tbl = select(i, ...)
+		for k, v in pairs(tbl) do
+			if result[k] ~= nil then
+				if behavior == "error" then
+					error("key found in more than one map: " .. tostring(k))
+				elseif behavior == "keep" then
+					-- Retain the earliest value.
+				else
+					result[k] = v
+				end
+			else
+				result[k] = v
+			end
+		end
+	end
+	return result
+end
+
 --- Log-level constants matching `vim.log.levels` numeric values.
 --- Delegates to the real table in-editor so callers stay in lockstep.
 ---@type table<string, integer>
