@@ -4,6 +4,7 @@ local parser = require("org_markdown.utils.parser")
 local async = require("org_markdown.utils.async")
 local datetime = require("org_markdown.utils.datetime")
 local document = require("org_markdown.utils.document")
+local capture_core = require("org_markdown.capture.core")
 
 local M = {}
 
@@ -298,7 +299,9 @@ local key_mapping = {
 	},
 }
 
---- Insert captured content under a heading using the document model
+--- Insert captured content under a heading using the document model.
+--- The tree mutation is shared with the CLI via capture.core; the in-editor
+--- flow keeps its own (dir-creating) IO through document.read/write_to_file.
 --- @param filepath string Path to the destination file
 --- @param heading_text string|nil Heading text to insert under (nil to append at end)
 --- @param content_lines string[] Lines to insert
@@ -308,49 +311,8 @@ local function insert_capture_with_document(filepath, heading_text, content_line
 	-- Read and parse destination file
 	local root = document.read_from_file(expanded)
 
-	-- Parse captured content into nodes
-	local captured_root = document.parse(content_lines)
-
-	-- Determine where to insert
-	local target_heading = nil
-	if heading_text and heading_text ~= "" then
-		target_heading = document.find_heading_by_text(root, heading_text)
-
-		if not target_heading then
-			-- Create new heading node if it doesn't exist
-			target_heading = document.create_node({
-				level = 1,
-				text = heading_text,
-			})
-			document.insert_child(root, target_heading)
-		end
-	end
-
-	if target_heading then
-		-- Insert captured content as children of the target heading
-		local base_level = target_heading.level
-
-		-- Insert any headings from captured content with adjusted levels
-		for _, child in ipairs(captured_root.children) do
-			---@diagnostic disable-next-line: param-type-mismatch
-			document.adjust_node_levels(child, base_level)
-			document.insert_child(target_heading, child)
-		end
-
-		-- Add non-heading content to target's content_lines
-		for _, line in ipairs(captured_root.content_lines) do
-			table.insert(target_heading.content_lines, line)
-		end
-		target_heading.dirty = true
-	else
-		-- No heading specified - append to document root
-		for _, child in ipairs(captured_root.children) do
-			document.insert_child(root, child)
-		end
-		for _, line in ipairs(captured_root.content_lines) do
-			table.insert(root.content_lines, line)
-		end
-	end
+	-- Insert captured content into the tree (shared logic)
+	capture_core.insert_content(root, heading_text, content_lines)
 
 	-- Serialize and write back
 	document.write_to_file(expanded, root)

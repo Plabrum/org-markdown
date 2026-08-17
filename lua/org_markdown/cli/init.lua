@@ -104,6 +104,90 @@ local function run_agenda(args)
 	return 0
 end
 
+-- Hand-parse `--key <value>` flags from a command's args, mirroring the
+-- lightweight style of parse_view_flag. Bare/unknown flags are reported.
+local function parse_flags(args, known)
+	local flags = {}
+	local i = 1
+	while i <= #args do
+		local arg = args[i]
+		local key = arg:match("^%-%-(.+)$")
+		if not key then
+			return nil, "unexpected argument '" .. arg .. "'"
+		end
+		if not known[key] then
+			return nil, "unknown flag '--" .. key .. "'"
+		end
+		local value = args[i + 1]
+		if value == nil then
+			return nil, "flag '--" .. key .. "' requires a value"
+		end
+		flags[key] = value
+		i = i + 2
+	end
+	return flags
+end
+
+-- Capture content under a heading non-interactively and write it to disk.
+-- Resolves template/file/heading from config by --template; explicit --file /
+-- --heading / --content override or supply them directly.
+local function run_capture(args)
+	local flags, err = parse_flags(args, {
+		template = true,
+		content = true,
+		file = true,
+		heading = true,
+	})
+	if not flags then
+		io.stderr:write("org capture: " .. err .. "\n")
+		return 1
+	end
+
+	local config = require("org_markdown.config")
+	local compat = require("org_markdown.compat.vim")
+	local core = require("org_markdown.capture.core")
+	config.setup({})
+
+	-- Default template is a bare body marker; a named template supplies its own.
+	local template = "%?"
+	local file = flags.file
+	local heading = flags.heading
+
+	if flags.template then
+		local tpl = config.captures.templates[flags.template]
+		if not tpl then
+			io.stderr:write("org capture: no template named '" .. flags.template .. "'\n")
+			return 1
+		end
+		template = type(tpl.template) == "function" and tpl.template() or tpl.template
+		file = file or tpl.filename
+		if heading == nil then
+			heading = tpl.heading
+		end
+	end
+
+	if not file then
+		io.stderr:write("org capture: a destination is required (--file or --template)\n")
+		return 1
+	end
+
+	local text = core.expand_template(template, {
+		content = flags.content,
+		file = file,
+		author = config.captures.author_name,
+	})
+	if text == "" then
+		io.stderr:write("org capture: nothing to capture (empty content)\n")
+		return 1
+	end
+
+	core.insert_under_heading(file, heading, compat.split(text, "\n"))
+
+	local where = (heading and heading ~= "") and (" under heading '" .. heading .. "'") or ""
+	print("Captured to " .. file .. where)
+	return 0
+end
+
 -- Command registry: name -> { description, run }.
 -- `run` receives the pass-through args and returns an integer exit code.
 -- New commands added here self-document in `help_text()`.
@@ -122,6 +206,10 @@ M.commands = {
 	agenda = {
 		description = "Emit an agenda view as JSON (org agenda --view <id>)",
 		run = run_agenda,
+	},
+	capture = {
+		description = "Capture content under a heading (org capture --template <name> ...)",
+		run = run_capture,
 	},
 }
 

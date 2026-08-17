@@ -138,6 +138,38 @@ function M.tbl_extend(behavior, ...)
 	return result
 end
 
+--- Split `s` on the plain (non-pattern) separator `sep`, mirroring
+--- `vim.split(s, sep, { plain = true })`. A trailing separator yields a final
+--- empty field, matching Neovim's behavior.
+---@param s string
+---@param sep string
+---@return string[]
+function M.split(s, sep)
+	if has_vim then
+		return vim.split(s, sep, { plain = true })
+	end
+
+	local parts = {}
+	if sep == "" then
+		for i = 1, #s do
+			parts[i] = s:sub(i, i)
+		end
+		return parts
+	end
+
+	local start = 1
+	while true do
+		local from, to = s:find(sep, start, true)
+		if not from then
+			parts[#parts + 1] = s:sub(start)
+			break
+		end
+		parts[#parts + 1] = s:sub(start, from - 1)
+		start = to + 1
+	end
+	return parts
+end
+
 --- Log-level constants matching `vim.log.levels` numeric values.
 --- Delegates to the real table in-editor so callers stay in lockstep.
 ---@type table<string, integer>
