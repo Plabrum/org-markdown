@@ -1,4 +1,5 @@
 local config = require("org_markdown.config")
+local platform = require("org_markdown.platform")
 
 local M = {}
 
@@ -19,9 +20,9 @@ local function matches_patterns(filepath, patterns, is_exclude_mode)
 	end
 
 	-- Get just the filename for matching
-	local filename = vim.fn.fnamemodify(filepath, ":t")
+	local filename = platform.path.basename(filepath)
 	-- Get relative path from home for path-based patterns
-	local relative_path = vim.fn.fnamemodify(filepath, ":~:.")
+	local relative_path = platform.path.relative(filepath)
 
 	for _, pattern in ipairs(patterns) do
 		-- Exact filename match
@@ -53,21 +54,11 @@ local function matches_patterns(filepath, patterns, is_exclude_mode)
 end
 
 local function scan_dir_sync(dir, collected)
-	local handle = vim.uv.fs_scandir(dir)
-	if not handle then
-		return
-	end
-
-	while true do
-		local name, type_ = vim.uv.fs_scandir_next(handle)
-		if not name then
-			break
-		end
-
-		local full_path = dir .. "/" .. name
-		if type_ == "file" and is_markdown(name) then
+	for _, entry in ipairs(platform.fs.scandir(dir)) do
+		local full_path = dir .. "/" .. entry.name
+		if entry.type == "file" and is_markdown(entry.name) then
 			table.insert(collected, full_path)
-		elseif type_ == "directory" then
+		elseif entry.type == "directory" then
 			scan_dir_sync(full_path, collected)
 		end
 	end
@@ -84,10 +75,10 @@ function M.find_markdown_files(opts)
 
 	local roots = {}
 	if use_cwd then
-		table.insert(roots, vim.uv.cwd())
+		table.insert(roots, platform.fs.cwd())
 	else
 		for _, path in ipairs(config.refile_paths or {}) do
-			local expanded = vim.fn.expand(path)
+			local expanded = platform.path.expand(path)
 			table.insert(roots, expanded)
 		end
 	end
