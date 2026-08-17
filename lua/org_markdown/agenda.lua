@@ -14,6 +14,7 @@ local agenda_formatters = require("org_markdown.agenda_formatters")
 local datetime = require("org_markdown.utils.datetime")
 local preview = require("org_markdown.utils.preview")
 local pipeline = require("org_markdown.agenda.pipeline")
+local agenda_cli = require("org_markdown.agenda.cli")
 
 local M = {}
 
@@ -244,12 +245,18 @@ local function render_view(groups, view_def, view_id)
 	return lines, line_to_item
 end
 
--- Process a view: run the pure compute pipeline, then render its groups.
--- The scan → filter → sort → group stages live in `agenda.pipeline` (vim-free,
--- shared with the standalone CLI); this only owns the in-editor render step.
+-- Process a view: fetch its groups from the standalone `org` CLI, then render.
+-- Nothing is computed in-process -- the CLI runs the shared scan → filter →
+-- sort → group pipeline (with the live config exported to it) and returns
+-- structured JSON, which we decode and hand to the unchanged render layer.
+-- On CLI/decode failure we surface the error and return a non-broken buffer.
 local function process_view(view_id, view_def)
-	local computed = pipeline.compute_view(view_id, view_def)
-	return render_view(computed.groups, view_def, view_id)
+	local groups, err = agenda_cli.compute_view(view_id)
+	if not groups then
+		vim.notify("Agenda: " .. tostring(err), vim.log.levels.ERROR)
+		return { "Failed to load agenda view '" .. view_id .. "':", "  " .. tostring(err) }, {}
+	end
+	return render_view(groups, view_def, view_id)
 end
 
 -- Refresh the current view (re-process and re-render)

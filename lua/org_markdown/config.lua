@@ -323,6 +323,41 @@ local function expand_org_paths(value, org_dir)
 	end
 end
 
+-- Environment variable naming a Lua-chunk config file. When set (and readable),
+-- setup() loads it as the base user config. The in-editor side writes its live
+-- resolved config to a temp file and passes this var when spawning the `org`
+-- CLI, so the standalone process reproduces the editor's config (custom
+-- refile_paths, views, ignore_patterns, ...) instead of only knowing defaults.
+--
+-- A Lua chunk (`return { ... }`) is used rather than JSON so it loads with a
+-- bare `loadfile` under plain luajit -- no standalone JSON decoder required.
+M.ENV_CONFIG = "ORG_MARKDOWN_CONFIG"
+
+--- Load the config referenced by $ORG_MARKDOWN_CONFIG, if any.
+--- Standalone-safe: uses only `loadfile`/`os.getenv`, never `vim.*`.
+---@return table|nil config, string|nil err
+local function load_env_config()
+	local path = os.getenv(M.ENV_CONFIG)
+	if not path or path == "" then
+		return nil
+	end
+
+	local chunk, load_err = loadfile(path)
+	if not chunk then
+		return nil, "could not load " .. M.ENV_CONFIG .. " (" .. tostring(load_err) .. ")"
+	end
+
+	local ok, result = pcall(chunk)
+	if not ok then
+		return nil, M.ENV_CONFIG .. " chunk errored: " .. tostring(result)
+	end
+	if type(result) ~= "table" then
+		return nil, M.ENV_CONFIG .. " did not return a table"
+	end
+
+	return result
+end
+
 -- Helper to get views as an ordered array (for iteration/tabs)
 -- Returns array of { id = "view_id", ...view_def }
 function M.get_ordered_views()
@@ -353,6 +388,16 @@ end
 function M.setup(user_config)
 	-- Register schema for autocomplete
 	register_neoconf()
+
+	-- Base the config on $ORG_MARKDOWN_CONFIG when present (used by the CLI to
+	-- inherit the live editor config); explicit user_config still layers on top.
+	local env_config, env_err = load_env_config()
+	if env_err then
+		platform.notify("org_markdown: " .. env_err, compat.log_levels.ERROR)
+	end
+	if env_config then
+		user_config = merge_tables(env_config, user_config or {})
+	end
 
 	-- Try to load neoconf settings if available
 	local neoconf_config = {}
