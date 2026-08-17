@@ -1,4 +1,5 @@
 local M = {}
+local compat = require("org_markdown.compat.vim")
 local datetime = require("org_markdown.utils.datetime")
 local tree = require("org_markdown.utils.tree")
 
@@ -69,7 +70,7 @@ function M.parse_text(line)
 	text = text:gsub(M.PATTERNS.double_dash, "")
 	text = text:gsub(M.PATTERNS.trailing_tags, "")
 
-	return vim.trim(text)
+	return compat.trim(text)
 end
 
 function M.extract_date(line)

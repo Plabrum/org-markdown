@@ -3,6 +3,8 @@
 --- Separate from parser.lua which handles semantic parsing (state, priority, tags, dates)
 local M = {}
 
+local compat = require("org_markdown.compat.vim")
+
 -- Import patterns from parser (lazy to avoid circular dependency)
 local function get_patterns()
 	return require("org_markdown.utils.parser").PATTERNS
@@ -104,7 +106,7 @@ end
 ---@diagnostic disable-next-line: undefined-doc-name
 --- @return number|nil, number|nil, number|nil line, level, end_line (or nil if not found)
 function M.find_heading(lines, text)
-	local pattern = "^(#+)%s+" .. vim.pesc(text) .. "%s*$"
+	local pattern = "^(#+)%s+" .. compat.pesc(text) .. "%s*$"
 
 	for i, line in ipairs(lines) do
 		local hashes = line:match(pattern)

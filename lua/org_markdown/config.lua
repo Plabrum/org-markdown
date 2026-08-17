@@ -7,6 +7,9 @@
 -- - Validate agenda view definitions
 -- - Provide helper methods for accessing ordered views
 
+local compat = require("org_markdown.compat.vim")
+local platform = require("org_markdown.platform")
+
 local M = {
 	-- Base directory for org files
 	-- Used as default for:
@@ -158,7 +161,7 @@ local M = {
 		auto_refresh_on_save = false,
 		max_lookahead_days = 7,
 		notification_format = "%s in %d minutes",
-		notification_level = vim.log.levels.INFO,
+		notification_level = compat.log_levels.INFO,
 	},
 
 	archive = {
@@ -190,12 +193,12 @@ local function merge_tables(default, user)
 	-- First, copy all from default
 	for k, v in pairs(default) do
 		if type(v) == "table" then
-			if vim.tbl_islist(v) then
+			if compat.tbl_islist(v) then
 				-- Arrays: deep copy (will be replaced if user provides)
-				result[k] = vim.deepcopy(v)
+				result[k] = compat.deepcopy(v)
 			else
 				-- Objects: deep copy (will be merged if user provides)
-				result[k] = vim.deepcopy(v)
+				result[k] = compat.deepcopy(v)
 			end
 		else
 			result[k] = v
@@ -205,9 +208,9 @@ local function merge_tables(default, user)
 	-- Then, apply user overrides
 	for k, v in pairs(user) do
 		if type(v) == "table" and type(result[k]) == "table" then
-			if vim.tbl_islist(v) then
+			if compat.tbl_islist(v) then
 				-- Arrays: REPLACE entirely
-				result[k] = vim.deepcopy(v)
+				result[k] = compat.deepcopy(v)
 			else
 				-- Objects: MERGE recursively
 				result[k] = merge_tables(result[k], v)
@@ -223,24 +226,24 @@ end
 local function validate_view(view_id, view_def)
 	local warnings = {}
 
-	if view_def.source and not vim.tbl_contains({ "tasks", "calendar", "all" }, view_def.source) then
+	if view_def.source and not compat.tbl_contains({ "tasks", "calendar", "all" }, view_def.source) then
 		table.insert(warnings, "Invalid source: " .. view_def.source)
 	end
 
 	if view_def.sort and view_def.sort.by then
-		if not vim.tbl_contains({ "priority", "date", "state", "title", "file" }, view_def.sort.by) then
+		if not compat.tbl_contains({ "priority", "date", "state", "title", "file" }, view_def.sort.by) then
 			table.insert(warnings, "Invalid sort.by: " .. view_def.sort.by)
 		end
 	end
 
 	if view_def.group_by then
-		if not vim.tbl_contains({ "date", "priority", "state", "file", "tags" }, view_def.group_by) then
+		if not compat.tbl_contains({ "date", "priority", "state", "file", "tags" }, view_def.group_by) then
 			table.insert(warnings, "Invalid group_by: " .. view_def.group_by)
 		end
 	end
 
 	if view_def.display and view_def.display.format then
-		if not vim.tbl_contains({ "blocks", "timeline" }, view_def.display.format) then
+		if not compat.tbl_contains({ "blocks", "timeline" }, view_def.display.format) then
 			table.insert(warnings, "Invalid display.format: " .. view_def.display.format)
 		end
 	end
@@ -254,12 +257,15 @@ local function validate_view(view_id, view_def)
 	end
 
 	if #warnings > 0 then
-		vim.notify(string.format("View '%s' warnings:\n%s", view_id, table.concat(warnings, "\n")), vim.log.levels.WARN)
+		platform.notify(
+			string.format("View '%s' warnings:\n%s", view_id, table.concat(warnings, "\n")),
+			compat.log_levels.WARN
+		)
 	end
 end
 
 -- Store immutable defaults
-M._defaults = vim.deepcopy(M)
+M._defaults = compat.deepcopy(M)
 
 -- Clear all config fields from M (they'll be accessed via metatable)
 local keys_to_clear = {}
@@ -326,7 +332,7 @@ function M.get_ordered_views()
 
 	local views = {}
 	for view_id, view_def in pairs(M._runtime.agendas.views) do
-		local view = vim.deepcopy(view_def)
+		local view = compat.deepcopy(view_def)
 		view.id = view_id
 		table.insert(views, view)
 	end
