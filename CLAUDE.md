@@ -102,6 +102,13 @@ The plugin follows a modular architecture with clear separation of concerns:
 - `target` is a file path (file node) or `{ file = ..., heading = ... }`; `title`/`text` are accepted as the heading text so agenda items and parsed headlines pass through unchanged
 - All IO goes through the platform shim, so ids can be minted under the CLI as well as in-editor
 
+**Node Index** (`node/index.lua`)
+- Maps a node id to where that node lives now, so links resolve by UUID instead of by path and survive rename and refile
+- Built by scanning: `utils/queries.lua` walks `refile_paths`, and each file contributes its frontmatter `id` plus the `ID` property of every heading in it
+- `build(opts?)` returns `{ [id] = location }`; `lookup(id, index?)` returns one location, scanning when no index is passed
+- A location is `{ id, file }` for a file node, plus `heading` and `line` for a heading node; on a duplicate id the first file scanned wins
+- Scan-and-rebuild only — keeping the index fresh incrementally as buffers change is ORGMD-1
+
 **Async Utilities** (`utils/async.lua`)
 - Custom Promise implementation with `then_()`, `catch_()`, and `await()`
 - `async.run()` wraps coroutines for async operations
