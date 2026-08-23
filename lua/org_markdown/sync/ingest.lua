@@ -7,17 +7,24 @@
 -- the user, both edit those entries in place).
 --
 -- So entries are only ever appended, and re-running a pull must not duplicate
--- what is already there. Each entry carries a stable key on the line below its
--- heading:
+-- what is already there. Each entry carries a marker on the line below its
+-- heading, holding a stable key and the entry's promotion status:
 --
 --   ## TODO Send the deck <2026-08-23>
---   <!-- key: granola:9f21::Send the deck -->
+--   <!-- key: granola:9f21::Send the deck status: new -->
 --
 -- The key is what a re-run compares against: keys already present in the file
 -- are skipped, so an entry appears exactly once no matter how often the source
 -- replays it. Plugins that have a stable id of their own supply it as
 -- `item.key`; otherwise the key is derived from the fields that identify an
 -- item to a human (title, date, time).
+--
+-- The status is what a promotion sweep compares against: an entry lands as
+-- `new`, and the sweep marks it `promoted` once it has been moved into the
+-- user's files or `rejected` once it has been dismissed. Either disposition
+-- takes the entry out of what a later sweep proposes, and because the marker
+-- lives in the log rather than in the sweep, it survives re-sync — the entry is
+-- never re-appended, so its status is never reset.
 --
 -- All IO goes through the platform shim, so ingestion works under the CLI too.
 
@@ -26,21 +33,33 @@ local platform = require("org_markdown.platform")
 
 local M = {}
 
---- Render the key marker line stamped under an entry's heading.
+--- The dispositions an ingested entry can carry.
+M.STATUS = { NEW = "new", PROMOTED = "promoted", REJECTED = "rejected" }
+
+--- Render the marker line stamped under an entry's heading.
 ---@param key string
+---@param status string|nil Defaults to `new`
 ---@return string
-function M.format_key(key)
-	return string.format("<!-- key: %s -->", key)
+function M.format_marker(key, status)
+	return string.format("<!-- key: %s status: %s -->", key, status or M.STATUS.NEW)
 end
 
---- Read a key marker back out of a line. Returns nil for any other line.
+--- Read a marker back out of a line. Returns nil for any other line.
 ---@param line string
----@return string|nil key
-function M.parse_key(line)
+---@return { key: string, status: string }|nil
+function M.parse_marker(line)
 	if not line then
 		return nil
 	end
-	return line:match("^%s*<!%-%- key: (.-) %-%->%s*$")
+
+	local body = line:match("^%s*<!%-%- key: (.-) %-%->%s*$")
+	if not body then
+		return nil
+	end
+
+	-- A log written before entries carried a status reads as untouched.
+	local key, status = body:match("^(.-) status: ([%a]+)$")
+	return { key = key or body, status = status or M.STATUS.NEW }
 end
 
 --- Format a date table as the `YYYY-MM-DD` part of a derived key.
@@ -80,31 +99,109 @@ function M.entry_key(item)
 	return key
 end
 
+--- Every entry recorded in an ingestion log, in file order. A missing file has
+--- none. `line` is where the entry's marker sits, so a caller can rewrite it.
+---@param path string
+---@return { key: string, status: string, line: integer }[]
+function M.entries(path)
+	local entries = {}
+
+	local content = platform.fs.read_file(path)
+	if not content then
+		return entries
+	end
+
+	for i, line in ipairs(compat.split(content, "\n")) do
+		local marker = M.parse_marker(line)
+		if marker then
+			entries[#entries + 1] = { key = marker.key, status = marker.status, line = i }
+		end
+	end
+
+	return entries
+end
+
 --- Every key already recorded in an ingestion log. A missing file has none.
 ---@param path string
 ---@return table<string, boolean> keys
 function M.existing_keys(path)
 	local keys = {}
-
-	local content = platform.fs.read_file(path)
-	if not content then
-		return keys
+	for _, entry in ipairs(M.entries(path)) do
+		keys[entry.key] = true
 	end
-
-	for line in content:gmatch("[^\n]+") do
-		local key = M.parse_key(line)
-		if key then
-			keys[key] = true
-		end
-	end
-
 	return keys
 end
 
+--- The status recorded for a key, or nil if the log has never carried it.
+---@param path string
+---@param key string
+---@return string|nil status
+function M.status_of(path, key)
+	for _, entry in ipairs(M.entries(path)) do
+		if entry.key == key then
+			return entry.status
+		end
+	end
+	return nil
+end
+
+--- The entries a sweep has yet to dispose of: everything still marked `new`.
+---@param path string
+---@return { key: string, status: string, line: integer }[]
+function M.pending(path)
+	local pending = {}
+	for _, entry in ipairs(M.entries(path)) do
+		if entry.status == M.STATUS.NEW then
+			pending[#pending + 1] = entry
+		end
+	end
+	return pending
+end
+
+--- Record a sweep's disposition of one entry by rewriting its marker in place.
+--- Only that line changes, so the log's prior entries stay exactly as written.
+---@param path string
+---@param key string
+---@param status string One of `M.STATUS`
+---@return boolean|nil ok, string|nil err
+function M.set_status(path, key, status)
+	if not compat.tbl_contains({ M.STATUS.NEW, M.STATUS.PROMOTED, M.STATUS.REJECTED }, status) then
+		return nil, "unknown ingestion status: " .. tostring(status)
+	end
+
+	local content = platform.fs.read_file(path)
+	if not content then
+		return nil, "could not read " .. path
+	end
+
+	local lines = compat.split(content, "\n")
+	local found = false
+	for i, line in ipairs(lines) do
+		local marker = M.parse_marker(line)
+		if marker and marker.key == key then
+			lines[i] = M.format_marker(key, status)
+			found = true
+			break
+		end
+	end
+
+	if not found then
+		return nil, "no ingested entry with key " .. key .. " in " .. path
+	end
+
+	local ok, err = platform.fs.write_file(path, table.concat(lines, "\n"))
+	if not ok then
+		return nil, "could not write " .. path .. ": " .. (err or "unknown error")
+	end
+
+	return true
+end
+
 --- Append entries that are not already in the log, in one write. Each entry is
---- `{ key = <string>, lines = <markdown lines> }`; its key marker is stamped
---- under the heading. Entries already present, and repeats within the batch,
---- are skipped, so the operation is idempotent.
+--- `{ key = <string>, lines = <markdown lines> }`; its marker is stamped under
+--- the heading, with the entry landing as `new` for a sweep to pick up. Entries
+--- already present — whatever status they now carry — and repeats within the
+--- batch are skipped, so the operation is idempotent.
 ---@param path string
 ---@param entries { key: string, lines: string[] }[]
 ---@return string[]|nil appended, string|nil err
@@ -120,7 +217,7 @@ function M.append_entries(path, entries)
 			-- The marker sits below the heading, so the entry still reads as an
 			-- ordinary markdown block.
 			lines[#lines + 1] = entry.lines[1]
-			lines[#lines + 1] = M.format_key(entry.key)
+			lines[#lines + 1] = M.format_marker(entry.key)
 			for i = 2, #entry.lines do
 				lines[#lines + 1] = entry.lines[i]
 			end

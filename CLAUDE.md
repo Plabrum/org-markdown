@@ -444,8 +444,11 @@ Items can represent calendar events, tasks, issues, or simple notes. All date/st
 #### Ingestion Mode (`sync/ingest.lua`)
 
 - A plugin with `mode = "append"` ingests into a source log instead of mirroring a source: entries are only appended, and prior entries are never rewritten or reordered
-- Each appended entry carries a stable key on the line below its heading (`<!-- key: ... -->`); a re-run skips keys already in the file, so an item lands exactly once no matter how often the source replays it
+- Each appended entry carries a marker on the line below its heading holding a stable key and a promotion status (`<!-- key: ... status: new -->`); a re-run skips keys already in the file, so an item lands exactly once no matter how often the source replays it
 - The key is `item.key` when the plugin has a stable id of its own, otherwise it is derived from title + date + time (`ingest.entry_key()`)
+- The status is the promotion sweep's record of what it has done with an entry: it lands as `new` and the sweep marks it `promoted` or `rejected`, which takes it out of what a later sweep proposes. Because the marker lives in the log rather than in the sweep, and the entry is never re-appended, the status survives re-sync
+- `ingest.entries(path)` lists every entry with its status and marker line; `ingest.pending(path)` narrows that to what is still `new`, and `ingest.status_of(path, key)` answers for one key
+- `ingest.set_status(path, key, status)` rewrites just that entry's marker line, leaving the rest of the log as written; a marker with no status reads as `new`, so logs written before statuses existed still work
 - `ingest.append_entries(path, entries)` is the append primitive; it dedups against the file and within the batch, and writes once through the platform shim (so ingestion works under the CLI)
 - Append-mode files get no auto-managed header — they are meant to be read and edited in place
 - `ingest.append_entries()` creates the log's parent directory, since source logs live in one of their own (`~/org/sources/`)

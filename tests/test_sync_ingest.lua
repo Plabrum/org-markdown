@@ -67,15 +67,26 @@ T["entry_key - nil for an item with no identity"] = function()
 	MiniTest.expect.equality(ingest.entry_key({ title = "" }), nil)
 end
 
--- key marker round trip ----------------------------------------------------
+-- marker round trip --------------------------------------------------------
 
-T["format_key - parse_key is its inverse"] = function()
-	local line = ingest.format_key("granola:9f21::Send the deck")
-	MiniTest.expect.equality(ingest.parse_key(line), "granola:9f21::Send the deck")
+T["format_marker - parse_marker is its inverse"] = function()
+	local line = ingest.format_marker("granola:9f21::Send the deck", "promoted")
+	MiniTest.expect.equality(ingest.parse_marker(line), {
+		key = "granola:9f21::Send the deck",
+		status = "promoted",
+	})
 end
 
-T["parse_key - ignores ordinary lines"] = function()
-	MiniTest.expect.equality(ingest.parse_key("## TODO Send the deck"), nil)
+T["format_marker - an entry lands as new"] = function()
+	MiniTest.expect.equality(ingest.format_marker("a"), "<!-- key: a status: new -->")
+end
+
+T["parse_marker - a marker with no status reads as new"] = function()
+	MiniTest.expect.equality(ingest.parse_marker("<!-- key: a -->"), { key = "a", status = "new" })
+end
+
+T["parse_marker - ignores ordinary lines"] = function()
+	MiniTest.expect.equality(ingest.parse_marker("## TODO Send the deck"), nil)
 end
 
 -- append_entries -----------------------------------------------------------
@@ -87,7 +98,7 @@ T["append_entries - stamps the key under the heading"] = function()
 		{ key = "a", lines = { "## TODO First", "", "body", "" } },
 	})
 
-	MiniTest.expect.equality(read(path), "## TODO First\n<!-- key: a -->\n\nbody\n\n")
+	MiniTest.expect.equality(read(path), "## TODO First\n<!-- key: a status: new -->\n\nbody\n\n")
 end
 
 T["append_entries - keeps prior entries untouched"] = function()
@@ -103,7 +114,7 @@ T["append_entries - keeps prior entries untouched"] = function()
 	MiniTest.expect.equality(lines[1], "# Sources")
 	MiniTest.expect.equality(lines[3], "## TODO Hand written")
 	MiniTest.expect.equality(lines[5], "## TODO First")
-	MiniTest.expect.equality(lines[6], "<!-- key: a -->")
+	MiniTest.expect.equality(lines[6], "<!-- key: a status: new -->")
 end
 
 T["append_entries - skips keys already in the log"] = function()
@@ -155,7 +166,87 @@ T["append_entries - starts on a fresh line after an unterminated log"] = functio
 
 	ingest.append_entries(path, { { key = "a", lines = { "## TODO First", "" } } })
 
-	MiniTest.expect.equality(read(path), "## TODO Hand written\n## TODO First\n<!-- key: a -->\n\n")
+	MiniTest.expect.equality(read(path), "## TODO Hand written\n## TODO First\n<!-- key: a status: new -->\n\n")
+end
+
+-- promotion status ---------------------------------------------------------
+
+T["entries - reports every entry in file order"] = function()
+	local path = tmpfile()
+	ingest.append_entries(path, {
+		{ key = "a", lines = { "## TODO First", "" } },
+		{ key = "b", lines = { "## TODO Second", "" } },
+	})
+
+	MiniTest.expect.equality(ingest.entries(path), {
+		{ key = "a", status = "new", line = 2 },
+		{ key = "b", status = "new", line = 5 },
+	})
+end
+
+T["entries - none for a log that doesn't exist yet"] = function()
+	MiniTest.expect.equality(ingest.entries(tmpfile()), {})
+end
+
+T["set_status - a promoted entry drops out of a later sweep"] = function()
+	local path = tmpfile()
+	ingest.append_entries(path, {
+		{ key = "a", lines = { "## TODO First", "" } },
+		{ key = "b", lines = { "## TODO Second", "" } },
+	})
+
+	ingest.set_status(path, "a", ingest.STATUS.PROMOTED)
+	ingest.set_status(path, "b", ingest.STATUS.REJECTED)
+
+	MiniTest.expect.equality(ingest.pending(path), {})
+	MiniTest.expect.equality(ingest.status_of(path, "a"), "promoted")
+	MiniTest.expect.equality(ingest.status_of(path, "b"), "rejected")
+end
+
+T["set_status - leaves the rest of the log untouched"] = function()
+	local path = tmpfile()
+	utils.write_lines(path, { "# Sources", "" })
+	ingest.append_entries(path, { { key = "a", lines = { "## TODO First", "", "body", "" } } })
+
+	ingest.set_status(path, "a", ingest.STATUS.PROMOTED)
+
+	MiniTest.expect.equality(read(path), "# Sources\n\n## TODO First\n<!-- key: a status: promoted -->\n\nbody\n\n")
+end
+
+T["set_status - a status survives re-sync"] = function()
+	local path = tmpfile()
+	local entries = { { key = "a", lines = { "## TODO First", "" } } }
+
+	ingest.append_entries(path, entries)
+	ingest.set_status(path, "a", ingest.STATUS.PROMOTED)
+	ingest.append_entries(path, entries)
+
+	MiniTest.expect.equality(ingest.status_of(path, "a"), "promoted")
+	MiniTest.expect.equality(occurrences(path, "## TODO First"), 1)
+	MiniTest.expect.equality(ingest.pending(path), {})
+end
+
+T["set_status - rejects an unknown status"] = function()
+	local path = tmpfile()
+	ingest.append_entries(path, { { key = "a", lines = { "## TODO First", "" } } })
+
+	local ok, err = ingest.set_status(path, "a", "maybe")
+	MiniTest.expect.equality(ok, nil)
+	MiniTest.expect.equality(err, "unknown ingestion status: maybe")
+	MiniTest.expect.equality(ingest.status_of(path, "a"), "new")
+end
+
+T["set_status - reports a key the log doesn't carry"] = function()
+	local path = tmpfile()
+	ingest.append_entries(path, { { key = "a", lines = { "## TODO First", "" } } })
+
+	local ok, err = ingest.set_status(path, "b", ingest.STATUS.PROMOTED)
+	MiniTest.expect.equality(ok, nil)
+	MiniTest.expect.equality(err, "no ingested entry with key b in " .. path)
+end
+
+T["status_of - nil for a key the log has never carried"] = function()
+	MiniTest.expect.equality(ingest.status_of(tmpfile(), "a"), nil)
 end
 
 -- manager integration ------------------------------------------------------
@@ -191,7 +282,7 @@ T["sync_plugin - append mode ingests, then ingests nothing new"] = function()
 
 	local first = utils.read_lines(path)
 	MiniTest.expect.equality(first[1], "# TODO Send the deck <2026-08-23 Sun>")
-	MiniTest.expect.equality(first[2], "<!-- key: Send the deck::2026-08-23 -->")
+	MiniTest.expect.equality(first[2], "<!-- key: Send the deck::2026-08-23 status: new -->")
 
 	manager.sync_plugin("test_ingest")
 	vim.wait(200)

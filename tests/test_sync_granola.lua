@@ -271,7 +271,7 @@ T["sync - a finished meeting's action items land in the source log"] = function(
 	local lines = sync_and_wait(log_path, 4)
 
 	MiniTest.expect.equality(lines[1], "# TODO Send the deck :granola:")
-	MiniTest.expect.equality(lines[2], "<!-- key: granola:m1::Send the deck -->")
+	MiniTest.expect.equality(lines[2], "<!-- key: granola:m1::Send the deck status: new -->")
 	MiniTest.expect.equality(lines[4], "**Meeting:** Kickoff")
 	MiniTest.expect.equality(read(log_path):find("AUTO%-MANAGED"), nil)
 end
@@ -294,7 +294,7 @@ T["sync - a later meeting appends without touching earlier entries"] = function(
 		MiniTest.expect.equality(second[i], line)
 	end
 	MiniTest.expect.equality(second[#first + 1], "# TODO Book the room :granola:")
-	MiniTest.expect.equality(second[#first + 2], "<!-- key: granola:m2::Book the room -->")
+	MiniTest.expect.equality(second[#first + 2], "<!-- key: granola:m2::Book the room status: new -->")
 end
 
 T["sync - syncing again ingests nothing new"] = function()
