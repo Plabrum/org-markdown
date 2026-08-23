@@ -109,6 +109,13 @@ The plugin follows a modular architecture with clear separation of concerns:
 - A location is `{ id, file }` for a file node, plus `heading` and `line` for a heading node; on a duplicate id the first file scanned wins
 - Scan-and-rebuild only — keeping the index fresh incrementally as buffers change is ORGMD-1
 
+**By-ID Links** (`utils/patterns.lua`, `utils/parser.lua`)
+- A link names its target by UUID, never by path, so it survives rename and refile
+- Syntax is ordinary markdown: `[display text](id:<uuid>)`; the `id:` scheme is what marks it as ours
+- Pattern lives in `patterns.LINK` (with `patterns.LINK_SCHEME` and `patterns.UUID`)
+- `parser.parse_link(line, init?)` returns `{ id, text, from, to }` for the first link (`from`/`to` are its byte range, for cursor-aware callers); `parser.parse_links(line)` returns all of them
+- `parser.serialize_link(link)` is its exact inverse
+
 **Async Utilities** (`utils/async.lua`)
 - Custom Promise implementation with `then_()`, `catch_()`, and `await()`
 - `async.run()` wraps coroutines for async operations

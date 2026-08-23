@@ -1,6 +1,16 @@
 -- Pattern matching utilities for glob and path patterns
 local M = {}
 
+-- By-ID link syntax: `[display text](id:<uuid>)`.
+--
+-- The target is named by the UUID a node carries in its metadata (node/id.lua),
+-- never by a path, so a link keeps pointing at its target after a rename or a
+-- refile. The shape stays ordinary markdown, so a link renders as a link
+-- everywhere else; `id:` is what marks it as ours.
+M.LINK_SCHEME = "id:"
+M.UUID = "%x%x%x%x%x%x%x%x%-%x%x%x%x%-%x%x%x%x%-%x%x%x%x%-%x%x%x%x%x%x%x%x%x%x%x%x"
+M.LINK = "%[([^%]]*)%]%(" .. M.LINK_SCHEME .. "(" .. M.UUID .. ")%)"
+
 --- Convert a glob pattern to a Lua pattern
 --- Supports:
 ---   * -> matches any characters except /

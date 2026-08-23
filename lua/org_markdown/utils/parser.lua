@@ -1,6 +1,7 @@
 local M = {}
 local compat = require("org_markdown.compat.vim")
 local datetime = require("org_markdown.utils.datetime")
+local patterns = require("org_markdown.utils.patterns")
 local tree = require("org_markdown.utils.tree")
 
 -- Centralized patterns for org-markdown parsing
@@ -23,6 +24,9 @@ M.PATTERNS = {
 	-- Tags
 	tag_block = "(:[%w:_-]+:)$",
 	tag_item = "([%w_-]+)",
+
+	-- Links (by id, never by path — see utils/patterns.lua)
+	link = patterns.LINK,
 
 	-- Misc
 	priority_bracket = "%[%#.%]%s*",
@@ -121,6 +125,49 @@ function M.parse_headline(line)
 		text = M.parse_text(line),
 		tags = M.extract_tags(line),
 	}
+end
+
+--- Parse the first by-ID link in a line.
+---
+--- Expected format: `[display text](id:<uuid>)`
+---
+--- @param line string The line to scan (e.g., "see [Notes](id:2b7f...)")
+--- @param init number|nil Byte offset to start scanning from (defaults to 1)
+--- @return table|nil Link data `{ id, text, from, to }`, where `from`/`to` are
+---   the byte range the link occupies, or nil when the line holds no link
+function M.parse_link(line, init)
+	local from, to, text, id = line:find(M.PATTERNS.link, init)
+	if not from then
+		return nil
+	end
+
+	return { id = id, text = text, from = from, to = to }
+end
+
+--- Collect every by-ID link in a line, in the order they appear.
+---
+--- @param line string
+--- @return table List of link data as returned by `parse_link`
+function M.parse_links(line)
+	local links = {}
+	local init = 1
+
+	while true do
+		local link = M.parse_link(line, init)
+		if not link then
+			return links
+		end
+		table.insert(links, link)
+		init = link.to + 1
+	end
+end
+
+--- Render a link back into its markdown form. Inverse of `parse_link`.
+---
+--- @param link table Link data `{ id = <uuid>, text = <display text> }`
+--- @return string
+function M.serialize_link(link)
+	return string.format("[%s](%s%s)", link.text or "", patterns.LINK_SCHEME, link.id)
 end
 
 function M.escape_marker(marker, escape_chars)
