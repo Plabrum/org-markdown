@@ -179,8 +179,8 @@ T["entries - reports every entry in file order"] = function()
 	})
 
 	MiniTest.expect.equality(ingest.entries(path), {
-		{ key = "a", status = "new", line = 2 },
-		{ key = "b", status = "new", line = 5 },
+		{ key = "a", status = "new", line = 2, heading = "## TODO First", heading_line = 1 },
+		{ key = "b", status = "new", line = 5, heading = "## TODO Second", heading_line = 4 },
 	})
 end
 

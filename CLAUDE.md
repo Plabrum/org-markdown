@@ -168,6 +168,7 @@ User config is deeply merged into defaults via `merge_tables()` in `config.lua`.
 - `keymaps`: all command keybindings
 - `checkbox_states` and `status_states`: cycling behavior
 - `agendas.views`: array of agenda view definitions (see Agenda Views section below)
+- `promotion`: where a promoted source entry lands (`file`, optional `heading`) and the status it takes
 - `sync.plugins.*`: per-plugin configuration (calendar, external plugins, etc.)
 - `sync.external_plugins`: array of external plugin module names to load
 
@@ -452,6 +453,16 @@ Items can represent calendar events, tasks, issues, or simple notes. All date/st
 - `ingest.append_entries(path, entries)` is the append primitive; it dedups against the file and within the batch, and writes once through the platform shim (so ingestion works under the CLI)
 - Append-mode files get no auto-managed header — they are meant to be read and edited in place
 - `ingest.append_entries()` creates the log's parent directory, since source logs live in one of their own (`~/org/sources/`)
+- `ingest.find(path, key)` returns one entry, including the `heading` it was stamped under — found by looking back from the marker, since minting the entry's id puts a property line between the two
+
+#### Promotion (`sync/promote.lua`)
+
+- Promotion is how an ingested entry becomes work the user has accepted: the entry's text lands as a tracked TODO in a file the agenda scans, which a source log (under the ignored `sources/*`) is deliberately not
+- `promote.entry(source, destination?, opts?)` is the whole operation — `source` is `{ file = <log>, key = <entry key> }`, `destination` is `{ file, heading? }` defaulting to `config.promotion`, and `opts` carries `status` and `date`
+- The promoted heading keeps the entry's own text, priority and tags, takes the promoting status (`TODO`) and a tracked date (today unless `opts.date` says otherwise), and carries a `**Source:**` back-link under it
+- The back-link is an Epic-B by-ID link (`node/link.to_target()`), so it still resolves after the entry or the heading is refiled; minting the id is what writes an `ID` property into the log entry
+- The entry is stamped `promoted` (`ingest.set_status`) only once its TODO is on disk, so a failure part-way leaves the entry pending rather than losing it; an entry already `promoted` or `rejected` is refused, since promoting twice would duplicate the item in planning
+- Trigger-agnostic: choosing entries and asking the user belongs to whatever drives it. Writing goes through `capture/core.insert_under_heading()` and the platform shim, so promotion runs under the CLI too
 
 **Granola Plugin** (`sync/plugins/granola/`) — the first ingestion source
 - Appends the action items of finished Granola meetings to `~/org/sources/granola.md` (`mode = "append"`)

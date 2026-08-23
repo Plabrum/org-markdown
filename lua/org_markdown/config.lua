@@ -175,6 +175,15 @@ local M = {
 		log_file = "~/org/execution.log",
 	},
 
+	promotion = {
+		-- Where an ingested source entry lands when it is promoted, unless the
+		-- caller names a destination of its own. It has to be a file the agenda
+		-- scans -- promotion is what moves an item into planning.
+		-- A `heading` can be set to land promoted items under one heading.
+		file = "~/org/refile.md",
+		status = "TODO",
+	},
+
 	archive = {
 		enabled = true, -- Enable archiving feature (timestamp addition)
 		auto_archive = false, -- Disable auto-archive by default (user must opt-in)

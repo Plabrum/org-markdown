@@ -30,6 +30,7 @@
 
 local compat = require("org_markdown.compat.vim")
 local platform = require("org_markdown.platform")
+local tree = require("org_markdown.utils.tree")
 
 local M = {}
 
@@ -100,9 +101,13 @@ function M.entry_key(item)
 end
 
 --- Every entry recorded in an ingestion log, in file order. A missing file has
---- none. `line` is where the entry's marker sits, so a caller can rewrite it.
+--- none. `line` is where the entry's marker sits, so a caller can rewrite it,
+--- and `heading` is the heading the marker was stamped under, so a caller
+--- promoting the entry knows what it says. The heading is found by looking back
+--- from the marker rather than assuming the line above it: minting the entry's
+--- id (Epic B) puts a property line between the two.
 ---@param path string
----@return { key: string, status: string, line: integer }[]
+---@return { key: string, status: string, line: integer, heading: string|nil, heading_line: integer|nil }[]
 function M.entries(path)
 	local entries = {}
 
@@ -111,14 +116,38 @@ function M.entries(path)
 		return entries
 	end
 
+	local heading, heading_line = nil, nil
 	for i, line in ipairs(compat.split(content, "\n")) do
+		if tree.is_heading(line) then
+			heading, heading_line = line, i
+		end
+
 		local marker = M.parse_marker(line)
 		if marker then
-			entries[#entries + 1] = { key = marker.key, status = marker.status, line = i }
+			entries[#entries + 1] = {
+				key = marker.key,
+				status = marker.status,
+				line = i,
+				heading = heading,
+				heading_line = heading_line,
+			}
 		end
 	end
 
 	return entries
+end
+
+--- The entry a key names, or nil when the log has never carried it.
+---@param path string
+---@param key string
+---@return table|nil entry, string|nil err
+function M.find(path, key)
+	for _, entry in ipairs(M.entries(path)) do
+		if entry.key == key then
+			return entry
+		end
+	end
+	return nil, "no ingested entry with key " .. tostring(key) .. " in " .. path
 end
 
 --- Every key already recorded in an ingestion log. A missing file has none.
@@ -137,12 +166,8 @@ end
 ---@param key string
 ---@return string|nil status
 function M.status_of(path, key)
-	for _, entry in ipairs(M.entries(path)) do
-		if entry.key == key then
-			return entry.status
-		end
-	end
-	return nil
+	local entry = M.find(path, key)
+	return entry and entry.status or nil
 end
 
 --- The entries a sweep has yet to dispose of: everything still marked `new`.
