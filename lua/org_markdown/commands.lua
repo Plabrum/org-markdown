@@ -14,6 +14,7 @@ local config = require("org_markdown.config")
 local find = require("org_markdown.find")
 local link = require("org_markdown.node.link")
 local editing = require("org_markdown.utils.editing")
+local execution = require("org_markdown.execution.heading")
 local quick_note = require("org_markdown.quick_note")
 local syntax = require("org_markdown.syntax")
 
@@ -67,6 +68,18 @@ function M.register()
 		desc = "OrgMarkdown: Follow the link under the cursor",
 	})
 
+	vim.api.nvim_create_user_command("MarkdownStartTask", execution.start, {
+		desc = "OrgMarkdown: Start the task under the cursor",
+	})
+
+	vim.api.nvim_create_user_command("MarkdownPauseTask", execution.pause, {
+		desc = "OrgMarkdown: Pause the task under the cursor",
+	})
+
+	vim.api.nvim_create_user_command("MarkdownDoneTask", execution.done, {
+		desc = "OrgMarkdown: Finish the task under the cursor",
+	})
+
 	vim.api.nvim_create_user_command("MarkdownPromote", function()
 		editing.promote_heading(0)
 	end, {
@@ -118,6 +131,21 @@ function M.register()
 
 	vim.keymap.set("n", keymaps.follow_link, "<cmd>MarkdownFollowLink<CR>", {
 		desc = "OrgMarkdown: Follow link under cursor",
+		silent = true,
+	})
+
+	vim.keymap.set("n", keymaps.start_task, "<cmd>MarkdownStartTask<CR>", {
+		desc = "OrgMarkdown: Start task under cursor",
+		silent = true,
+	})
+
+	vim.keymap.set("n", keymaps.pause_task, "<cmd>MarkdownPauseTask<CR>", {
+		desc = "OrgMarkdown: Pause task under cursor",
+		silent = true,
+	})
+
+	vim.keymap.set("n", keymaps.done_task, "<cmd>MarkdownDoneTask<CR>", {
+		desc = "OrgMarkdown: Finish task under cursor",
 		silent = true,
 	})
 

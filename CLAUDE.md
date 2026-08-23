@@ -95,6 +95,13 @@ The plugin follows a modular architecture with clear separation of concerns:
 - Single-STARTED invariant: starting a task auto-pauses whatever was STARTED, and the pause/start pair is appended in one write via `log.append_events()` so the log never shows two started tasks or a pause that lost its start
 - `can(from, to)` exposes the transition table for callers that need to know what is legal before asking
 
+**Execution from a Heading** (`execution/heading.lua`)
+- The editor side of the state machine: the user transitions the task under the cursor instead of editing the log
+- `task_at(lines, row, file?)` finds the nearest heading on or above `row` and returns `{ file, text, line }` — the same `<file>::<heading text>` identity the agenda and the log use, so a body line transitions the task it belongs to
+- `summarize(events)` phrases the outcome and names the task that was auto-paused to make room for a start, since the single-STARTED invariant is otherwise invisible to the user
+- `start()`, `pause()` and `done()` are the editor entry points (`:MarkdownStartTask`, `:MarkdownPauseTask`, `:MarkdownDoneTask`; `keymaps.start_task`, `keymaps.pause_task`, `keymaps.done_task`); an illegal move is reported, never written
+- Locating and phrasing stay buffer-free so the CLI can reuse them; only the entry points touch `vim.*`
+
 **Node IDs** (`node/id.lua`)
 - A node is a file or a heading; both carry a stable UUID so links survive rename and refile
 - A file keeps its id as `id` in frontmatter; a heading keeps it as an `ID: [uuid]` property under the heading line (written via `utils/document.lua`)

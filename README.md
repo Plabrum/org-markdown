@@ -304,6 +304,9 @@ opts = {
     insert_link = "<leader>oil",
     open_quick_note = "<leader>z",
     sync_all = "<leader>oS",
+    start_task = "<leader>oxs",
+    pause_task = "<leader>oxp",
+    done_task = "<leader>oxd",
   },
 
   picker = "snacks",  -- or "telescope"
