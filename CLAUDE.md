@@ -80,6 +80,13 @@ The plugin follows a modular architecture with clear separation of concerns:
 - `append_event(task, transition)` appends one event; `parse_event(line)` is its exact inverse
 - Appends go through `platform.fs.append_file()` so the log works in-editor and under the CLI
 
+**Execution State** (`execution/state.lua`)
+- Reducer that folds the log into current state; every answer comes from log contents alone, never from the heading
+- `snapshot()` reads and folds the log into `{ tasks = { [id] = { state, since, from } }, started = <id|nil> }`; a missing log is an empty log
+- `state_of(task, snapshot?)` returns a task's current state (nil if the log has never mentioned it); `started_task(snapshot?)` returns the one STARTED task
+- The STARTED slot is single-occupancy: entering STARTED claims it, leaving releases it only if that task still holds it, and the most recent start wins
+- Pass a `snapshot` when answering for many tasks so the log is read once
+
 **Async Utilities** (`utils/async.lua`)
 - Custom Promise implementation with `then_()`, `catch_()`, and `await()`
 - `async.run()` wraps coroutines for async operations
