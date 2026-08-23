@@ -136,6 +136,13 @@ The plugin follows a modular architecture with clear separation of concerns:
 - `resolve(id, index?)` returns the location, or `nil, err` for an id no file in scope carries — an unresolved link is reported, never an error
 - `follow()` is the editor side: jumps to the target file and, for a heading node, its line (`:MarkdownFollowLink`, `keymaps.follow_link`)
 
+**Backlinks** (`node/backlinks.lua`)
+- The reverse of the index: which links point at a node, derived by scanning rather than stored — nothing is ever written into the node being linked to
+- `to(id, opts?)` lists every link in scope whose target is that id; `of(target, opts?)` asks the same for a `{ file, heading? }` node, and reports the node having no id yet (nobody has linked to it) rather than minting one
+- A reference is `{ id, file, line, heading?, text, context }` and names the node the link *sits in* — the heading it falls under, or the file for a link above every heading — since that is the node a user means by "A links to B"
+- `node_at(lines, row, file)` is what the current node means for a cursor: the heading at or above it, falling back to the file node
+- `show()` is the editor side: lists the backlinks of the node under the cursor in a picker and jumps to the chosen one (`:MarkdownBacklinks`, `keymaps.backlinks`); scanning and reading stay buffer-free so the CLI can list them too
+
 **Async Utilities** (`utils/async.lua`)
 - Custom Promise implementation with `then_()`, `catch_()`, and `await()`
 - `async.run()` wraps coroutines for async operations

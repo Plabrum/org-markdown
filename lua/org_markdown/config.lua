@@ -129,6 +129,7 @@ local M = {
 		refile_to_heading = "<leader>orh",
 		insert_link = "<leader>oil",
 		follow_link = "<leader>ol",
+		backlinks = "<leader>ob",
 		open_quick_note = "<leader>z",
 		sync_all = "<leader>oS",
 		start_task = "<leader>oxs",

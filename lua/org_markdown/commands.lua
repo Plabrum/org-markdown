@@ -13,6 +13,7 @@ local refile = require("org_markdown.refile")
 local config = require("org_markdown.config")
 local find = require("org_markdown.find")
 local link = require("org_markdown.node.link")
+local backlinks = require("org_markdown.node.backlinks")
 local editing = require("org_markdown.utils.editing")
 local execution = require("org_markdown.execution.heading")
 local quick_note = require("org_markdown.quick_note")
@@ -66,6 +67,10 @@ function M.register()
 
 	vim.api.nvim_create_user_command("MarkdownFollowLink", link.follow, {
 		desc = "OrgMarkdown: Follow the link under the cursor",
+	})
+
+	vim.api.nvim_create_user_command("MarkdownBacklinks", backlinks.show, {
+		desc = "OrgMarkdown: List the links pointing at the node under the cursor",
 	})
 
 	vim.api.nvim_create_user_command("MarkdownStartTask", execution.start, {
@@ -131,6 +136,11 @@ function M.register()
 
 	vim.keymap.set("n", keymaps.follow_link, "<cmd>MarkdownFollowLink<CR>", {
 		desc = "OrgMarkdown: Follow link under cursor",
+		silent = true,
+	})
+
+	vim.keymap.set("n", keymaps.backlinks, "<cmd>MarkdownBacklinks<CR>", {
+		desc = "OrgMarkdown: Backlinks to node under cursor",
 		silent = true,
 	})
 
