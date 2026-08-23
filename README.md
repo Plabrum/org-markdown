@@ -307,6 +307,7 @@ opts = {
     start_task = "<leader>oxs",
     pause_task = "<leader>oxp",
     done_task = "<leader>oxd",
+    focus_block = "<leader>oxf",
   },
 
   picker = "snacks",  -- or "telescope"

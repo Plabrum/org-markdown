@@ -109,6 +109,15 @@ The plugin follows a modular architecture with clear separation of concerns:
 - Formatters render the state after the title and before the tags, marked `▶ STARTED` for the active task, `▷ STARTED` / `⏸ PAUSED` / `✓ DONE` otherwise; a task the log has never mentioned renders exactly as before
 - Annotation happens in the vim-free pipeline and both fields ride the CLI's JSON projection, so the in-editor agenda (which renders what the CLI computes) and `org agenda` show the same states
 
+**Focus Blocks** (`execution/focus.lua`)
+- A focus block is time reserved on the calendar for work not yet chosen: it carries no task until it begins, unlike a meeting (which is what it says it is) and unlike a task (which is the work itself)
+- Represented as an ordinary calendar heading — a tracked date, usually with a time span — tagged `:focus:` and carrying **no** task state: `# Focus <2026-08-23 Sun 09:00-11:00> :focus:`
+- The tag is what makes it a block, so it stays first-class: it lands in calendar views, notifications and the CLI projection like any other dated heading, with no parallel store to keep in step. The absent state is what makes it task-less — a block that read as TODO would be work rather than a container for it
+- `kind(item)` reads that convention back as `focus` / `meeting` / `task` (nil for an undated, stateless heading), so a caller distinguishes them without re-deriving it; `is_focus` and `is_meeting` are the predicates over it. Agenda items and parsed headlines both pass through
+- A dated task stays a task, tag or no tag — a date on work does not make it an appointment
+- `create(block, destination?)` writes one (`{ title?, date?, start_time?, end_time? }`, date defaulting to today, destination to `config.focus`); `blocks(opts?)` reads them back off the calendar, earliest first, narrowed to `opts.date` when given
+- `add(span)` is the editor entry point (`:MarkdownFocusBlock 09:00-11:00`, `keymaps.focus_block`), asking for the span when none was given; `parse_span()` reads a span the way a user says one. Everything else is vim-free and writes through the platform shim, so blocks can be created and read under the CLI
+
 **Node IDs** (`node/id.lua`)
 - A node is a file or a heading; both carry a stable UUID so links survive rename and refile
 - A file keeps its id as `id` in frontmatter; a heading keeps it as an `ID: [uuid]` property under the heading line (written via `utils/document.lua`)
@@ -190,6 +199,7 @@ User config is deeply merged into defaults via `merge_tables()` in `config.lua`.
 - `checkbox_states` and `status_states`: cycling behavior
 - `agendas.views`: array of agenda view definitions (see Agenda Views section below)
 - `promotion`: where a promoted source entry lands (`file`, optional `heading`) and the status it takes
+- `focus`: where focus blocks land (`file`, optional `heading`), their default `title`, and the `tag` that marks one
 - `sync.plugins.*`: per-plugin configuration (calendar, external plugins, etc.)
 - `sync.external_plugins`: array of external plugin module names to load
 

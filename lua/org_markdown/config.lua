@@ -135,6 +135,7 @@ local M = {
 		start_task = "<leader>oxs",
 		pause_task = "<leader>oxp",
 		done_task = "<leader>oxd",
+		focus_block = "<leader>oxf",
 	},
 	checkbox_states = {
 		" ",
@@ -177,6 +178,15 @@ local M = {
 		-- Append-only log of task state transitions. Execution state is never
 		-- stored on the heading; it is derived by folding this log.
 		log_file = "~/org/execution.log",
+	},
+
+	focus = {
+		-- Focus blocks: time reserved on the calendar for work not yet chosen.
+		-- A block is a dated heading carrying `tag` and no task state, which is
+		-- what tells it apart from a meeting and from a task.
+		file = "~/org/focus.md",
+		title = "Focus",
+		tag = "focus",
 	},
 
 	promotion = {
