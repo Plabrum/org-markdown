@@ -95,6 +95,13 @@ The plugin follows a modular architecture with clear separation of concerns:
 - Single-STARTED invariant: starting a task auto-pauses whatever was STARTED, and the pause/start pair is appended in one write via `log.append_events()` so the log never shows two started tasks or a pause that lost its start
 - `can(from, to)` exposes the transition table for callers that need to know what is legal before asking
 
+**Node IDs** (`node/id.lua`)
+- A node is a file or a heading; both carry a stable UUID so links survive rename and refile
+- A file keeps its id as `id` in frontmatter; a heading keeps it as an `ID: [uuid]` property under the heading line (written via `utils/document.lua`)
+- Minted lazily: `get(target)` only reads, `ensure(target)` mints and writes exactly once and is a no-op on an already-identified node
+- `target` is a file path (file node) or `{ file = ..., heading = ... }`; `title`/`text` are accepted as the heading text so agenda items and parsed headlines pass through unchanged
+- All IO goes through the platform shim, so ids can be minted under the CLI as well as in-editor
+
 **Async Utilities** (`utils/async.lua`)
 - Custom Promise implementation with `then_()`, `catch_()`, and `await()`
 - `async.run()` wraps coroutines for async operations
