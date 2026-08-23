@@ -15,6 +15,7 @@ local find = require("org_markdown.find")
 local link = require("org_markdown.node.link")
 local backlinks = require("org_markdown.node.backlinks")
 local editing = require("org_markdown.utils.editing")
+local commence = require("org_markdown.execution.commence")
 local execution = require("org_markdown.execution.heading")
 local focus = require("org_markdown.execution.focus")
 local quick_note = require("org_markdown.quick_note")
@@ -93,6 +94,10 @@ function M.register()
 		desc = "OrgMarkdown: Reserve a focus block (e.g. 09:00-11:00)",
 	})
 
+	vim.api.nvim_create_user_command("MarkdownCommenceFocus", commence.begin, {
+		desc = "OrgMarkdown: Start a task for the focus block that is commencing",
+	})
+
 	vim.api.nvim_create_user_command("MarkdownPromote", function()
 		editing.promote_heading(0)
 	end, {
@@ -169,6 +174,11 @@ function M.register()
 
 	vim.keymap.set("n", keymaps.focus_block, "<cmd>MarkdownFocusBlock<CR>", {
 		desc = "OrgMarkdown: Reserve a focus block",
+		silent = true,
+	})
+
+	vim.keymap.set("n", keymaps.commence_focus, "<cmd>MarkdownCommenceFocus<CR>", {
+		desc = "OrgMarkdown: Start a task for the focus block",
 		silent = true,
 	})
 

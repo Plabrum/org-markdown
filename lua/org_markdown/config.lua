@@ -136,6 +136,7 @@ local M = {
 		pause_task = "<leader>oxp",
 		done_task = "<leader>oxd",
 		focus_block = "<leader>oxf",
+		commence_focus = "<leader>oxc",
 	},
 	checkbox_states = {
 		" ",

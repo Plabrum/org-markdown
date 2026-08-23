@@ -118,6 +118,14 @@ The plugin follows a modular architecture with clear separation of concerns:
 - `create(block, destination?)` writes one (`{ title?, date?, start_time?, end_time? }`, date defaulting to today, destination to `config.focus`); `blocks(opts?)` reads them back off the calendar, earliest first, narrowed to `opts.date` when given
 - `add(span)` is the editor entry point (`:MarkdownFocusBlock 09:00-11:00`, `keymaps.focus_block`), asking for the span when none was given; `parse_span()` reads a span the way a user says one. Everything else is vim-free and writes through the platform shim, so blocks can be created and read under the CLI
 
+**Commencing a Focus Block** (`execution/commence.lua`)
+- Commencement is when a block stops being empty: the user is shown the tasks that could be started right now, picks one, and it is driven to STARTED. Starting a task inside the block *is* the binding — the block is not rewritten to name it, since the log already records what ran and when
+- `eligible(opts?)` is what gets offered: every task in scope (`tasks()` flattens the agenda hierarchy and annotates execution state), minus the finished, blocked and externally-done ones, narrowed by `top_tier()` to the best priority tier that has anything in it — a block is one stretch of work, so offering C-priority tasks beside A-priority ones invites the wrong pick
+- Finished means DONE/CANCELLED on the heading or DONE in the log; unprioritized tasks are their own lowest tier, so they are offered once nothing better is open
+- Two exclusions are seams rather than answers: `is_blocked(item)` reads the explicit `BLOCKED`/`WAITING` states, with link-expressed dependencies still to come, and `is_externally_done(item)` is where a live source query lands — today a source's completion arrives via the `sync/complete.lua` sweep, which marks the heading DONE
+- `block_at(when?)` finds the block covering a moment (a block with no end runs to the end of its day); `commence(task, opts?)` is the transition to STARTED, auto-pausing whatever the previous block left running
+- `begin()` is the editor entry point (`:MarkdownCommenceFocus`, `keymaps.commence_focus`), picking through `utils/picker.lua`; everything else is vim-free so the CLI can list the same tasks and commence the same way
+
 **Node IDs** (`node/id.lua`)
 - A node is a file or a heading; both carry a stable UUID so links survive rename and refile
 - A file keeps its id as `id` in frontmatter; a heading keeps it as an `ID: [uuid]` property under the heading line (written via `utils/document.lua`)
