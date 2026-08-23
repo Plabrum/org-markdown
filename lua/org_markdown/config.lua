@@ -164,6 +164,12 @@ local M = {
 		notification_level = compat.log_levels.INFO,
 	},
 
+	execution = {
+		-- Append-only log of task state transitions. Execution state is never
+		-- stored on the heading; it is derived by folding this log.
+		log_file = "~/org/execution.log",
+	},
+
 	archive = {
 		enabled = true, -- Enable archiving feature (timestamp addition)
 		auto_archive = false, -- Disable auto-archive by default (user must opt-in)

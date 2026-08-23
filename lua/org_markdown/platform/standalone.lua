@@ -76,6 +76,21 @@ function M.fs.write_file(path, content)
 	return true
 end
 
+--- Append a string to a file, creating it when absent. Existing content is
+--- never rewritten, which is what the append-only event log relies on.
+---@param path string
+---@param content string
+---@return boolean ok, string|nil err
+function M.fs.append_file(path, content)
+	local file, err = io.open(path, "a")
+	if not file then
+		return false, err
+	end
+	file:write(content)
+	file:close()
+	return true
+end
+
 --- Expand a leading `~` and `$VAR`/`${VAR}` environment references.
 ---@param p string
 ---@return string

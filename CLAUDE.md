@@ -73,6 +73,13 @@ The plugin follows a modular architecture with clear separation of concerns:
 - Priority format: `[#A]`, `[#B]`, `[#C]`
 - Tag format: `:tag1:tag2:` at end of line
 
+**Execution Log** (`execution/log.lua`)
+- Append-only record of task state transitions; execution state is derived from the log, never stored on the heading
+- One central file (`config.execution.log_file`, default `~/org/execution.log`), not per-task sections, so appends never rewrite user markdown
+- Line format: `<ISO-8601 UTC>\t<from>\t<to>\t<task id>`, where the task id is `<file>::<heading text>` and `-` marks an absent `from` state
+- `append_event(task, transition)` appends one event; `parse_event(line)` is its exact inverse
+- Appends go through `platform.fs.append_file()` so the log works in-editor and under the CLI
+
 **Async Utilities** (`utils/async.lua`)
 - Custom Promise implementation with `then_()`, `catch_()`, and `await()`
 - `async.run()` wraps coroutines for async operations
