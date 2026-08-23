@@ -66,4 +66,44 @@ T["Status cycling with high priority"] = function()
 	MiniTest.expect.equality(result[1], "## IN_PROGRESS [#A] Critical bug")
 end
 
+-- Bullet continuation on Enter
+T["Enter at end of a bullet continues the list"] = function()
+	local line = "- Buy milk"
+	local result = editing.continue_todo(line, #line)
+	MiniTest.expect.equality(result, { "- Buy milk", "- " })
+end
+
+T["Enter at end of a checkbox continues it unchecked"] = function()
+	local line = "  - [X] Buy milk"
+	local result = editing.continue_todo(line, #line)
+	MiniTest.expect.equality(result, { "  - [X] Buy milk", "  - [ ] " })
+end
+
+T["Enter mid-line splits a bullet"] = function()
+	local result, col = editing.continue_todo("- Buy milk and eggs", 10)
+	MiniTest.expect.equality(result, { "- Buy milk", "- and eggs" })
+	MiniTest.expect.equality(col, 2)
+end
+
+T["Enter mid-line splits a checkbox"] = function()
+	local result, col = editing.continue_todo("- [X] Buy milk and eggs", 14)
+	MiniTest.expect.equality(result, { "- [X] Buy milk", "- [ ] and eggs" })
+	MiniTest.expect.equality(col, 6)
+end
+
+T["Enter inside the bullet marker falls back to a plain line break"] = function()
+	MiniTest.expect.equality(editing.continue_todo("- Buy milk", 1), nil)
+	MiniTest.expect.equality(editing.continue_todo("- [ ] Buy milk", 4), nil)
+end
+
+T["Enter on an empty bullet ends the list"] = function()
+	MiniTest.expect.equality(editing.continue_todo("- ", 2), { "" })
+	MiniTest.expect.equality(editing.continue_todo("- [ ]", 5), { "" })
+	MiniTest.expect.equality(editing.continue_todo("- [ ] ", 6), { "" })
+end
+
+T["Enter on a non-bullet line is untouched"] = function()
+	MiniTest.expect.equality(editing.continue_todo("Just prose", 4), nil)
+end
+
 return T

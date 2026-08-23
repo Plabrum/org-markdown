@@ -203,44 +203,50 @@ function M.demote_heading(bufnr)
 	return true
 end
 
-function M.continue_todo(line)
-	-- Try checkbox pattern first
-	local checkbox_pattern = "(%s*)%- %[.%](.*)"
-	local spaces, contents = line:match(checkbox_pattern)
+--- Continue a bullet on Enter, splitting the line at the cursor
+--- @param line string Line being edited
+--- @param col number|nil Bytes before the cursor; defaults to the end of the line
+--- @return table|nil new_lines, number|nil col Column to leave the cursor on
+function M.continue_todo(line, col)
+	col = col or #line
 
-	if spaces then
-		-- Found a checkbox bullet
-		if contents == "" or contents == " " then
-			return { "" } -- Remove empty checkbox bullet
-		end
-		return { line, spaces .. "- [ ] " }
-	end
-
-	-- Try plain bullet pattern
-	local plain_pattern = "(%s*)%- (.*)"
-	spaces, contents = line:match(plain_pattern)
-
-	if spaces then
-		-- Found a plain bullet
-		if contents == "" or contents == " " then
-			return { "" } -- Remove empty plain bullet
-		end
-		return { line, spaces .. "- " }
+	-- Checkbox bullet first, since a plain bullet is its prefix
+	local marker, contents = line:match("^(%s*%- %[.%] ?)(.*)$")
+	if not marker then
+		marker, contents = line:match("^(%s*%- )(.*)$")
 	end
 
 	-- Not a bullet line
-	return nil
+	if not marker then
+		return nil
+	end
+
+	-- An empty bullet ends the list rather than continuing it
+	if contents:match("^%s*$") then
+		return { "" }
+	end
+
+	-- Cursor inside the marker itself: nothing to continue, take the default <CR>
+	if col < #marker then
+		return nil
+	end
+
+	-- The new bullet starts unchecked, and carries whatever followed the cursor
+	local next_marker = (marker:gsub("%[.%]", "[ ]"))
+	local rest = (line:sub(col + 1):gsub("^%s+", ""))
+	return { line:sub(1, col), next_marker .. rest }, #next_marker
 end
 
 function M.edit_line_at_cursor(modifier_fn, update_cursor)
-	local row = vim.fn.line(".") - 1
+	local cursor = vim.api.nvim_win_get_cursor(0)
+	local row = cursor[1] - 1
 	local line = vim.api.nvim_buf_get_lines(0, row, row + 1, false)[1]
-	local new_lines = modifier_fn(line)
+	local new_lines, col = modifier_fn(line, cursor[2])
 
 	if new_lines then
 		vim.api.nvim_buf_set_lines(0, row, row + 1, false, new_lines)
 		if update_cursor then
-			vim.api.nvim_win_set_cursor(0, { row + #new_lines, #new_lines[#new_lines] })
+			vim.api.nvim_win_set_cursor(0, { row + #new_lines, col or #new_lines[#new_lines] })
 		end
 		return true
 	else
