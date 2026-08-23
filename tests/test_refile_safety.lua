@@ -314,6 +314,89 @@ T["refile edge case - indented bullet"] = function()
 end
 
 -- =========================================================================
+-- Heading Level Preservation
+-- =========================================================================
+
+-- Drive to_heading() without a picker: hand the destination straight to the
+-- confirm callback the picker would otherwise invoke.
+local function refile_to_heading(item)
+	local picker = require("org_markdown.utils.picker")
+	local config = require("org_markdown.config")
+	local original = picker.pick
+	local original_paths = config.refile_paths
+
+	config.refile_paths = { "/tmp/org-markdown-test-refile" }
+
+	picker.pick = function(_, opts)
+		opts.on_confirm(item)
+	end
+
+	local ok, err = pcall(refile.to_heading)
+	picker.pick = original
+	config.refile_paths = original_paths
+
+	MiniTest.expect.equality(ok, true, tostring(err))
+end
+
+T["refile to heading - keeps level of a heading that already has #"] = function()
+	local dest_file = create_test_file("levels_dest.md", {
+		"# Destination",
+	})
+
+	local bufnr = create_test_buffer({
+		"## Task to refile",
+		"Task content",
+	})
+	vim.api.nvim_set_current_buf(bufnr)
+	vim.api.nvim_win_set_cursor(0, { 1, 0 })
+
+	refile_to_heading({
+		filepath = dest_file,
+		filename = "levels_dest.md",
+		heading_text = "Destination",
+	})
+
+	local result = utils.read_lines(dest_file)
+
+	-- Nested directly under a level-1 heading, not "### Task to refile"
+	MiniTest.expect.equality(result[2], "## Task to refile")
+	MiniTest.expect.equality(result[3], "Task content")
+
+	vim.api.nvim_buf_delete(bufnr, { force = true })
+	cleanup_test_files()
+end
+
+T["refile to heading - shifts sub-headings by the same delta"] = function()
+	local dest_file = create_test_file("levels_nested_dest.md", {
+		"# Destination",
+		"## Section",
+	})
+
+	local bufnr = create_test_buffer({
+		"### Feature",
+		"#### Detail",
+		"Notes",
+	})
+	vim.api.nvim_set_current_buf(bufnr)
+	vim.api.nvim_win_set_cursor(0, { 1, 0 })
+
+	refile_to_heading({
+		filepath = dest_file,
+		filename = "levels_nested_dest.md",
+		heading_text = "Section",
+	})
+
+	local result = utils.read_lines(dest_file)
+
+	MiniTest.expect.equality(result[3], "### Feature")
+	MiniTest.expect.equality(result[4], "#### Detail")
+	MiniTest.expect.equality(result[5], "Notes")
+
+	vim.api.nvim_buf_delete(bufnr, { force = true })
+	cleanup_test_files()
+end
+
+-- =========================================================================
 -- Integration Scenarios
 -- =========================================================================
 

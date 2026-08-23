@@ -204,7 +204,7 @@ function M.to_heading()
 
 			for _, child in ipairs(refile_root.children) do
 				---@diagnostic disable-next-line: param-type-mismatch
-				document.adjust_node_levels(child, base_level)
+				document.reparent_node(child, base_level)
 				document.insert_child(target_heading, child)
 			end
 

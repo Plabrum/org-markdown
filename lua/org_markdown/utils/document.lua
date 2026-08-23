@@ -621,6 +621,20 @@ function M.adjust_node_levels(node, base_level)
 	end
 end
 
+--- Re-level a node (and its subtree) so it sits directly under a parent heading
+--- Shifts the whole subtree by a single delta, so a `## Task` nested under a
+--- `# Section` becomes `## Task` again rather than gaining the parent's level
+--- on top of the one it already had
+---@param node Node Node to re-level
+---@param parent_level number Level of the heading the node is nested under
+function M.reparent_node(node, parent_level)
+	if node.type ~= "heading" or not node.level then
+		return
+	end
+
+	M.adjust_node_levels(node, parent_level + 1 - node.level)
+end
+
 -- ============================================================================
 -- File I/O
 -- ============================================================================
