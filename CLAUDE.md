@@ -87,6 +87,14 @@ The plugin follows a modular architecture with clear separation of concerns:
 - The STARTED slot is single-occupancy: entering STARTED claims it, leaving releases it only if that task still holds it, and the most recent start wins
 - Pass a `snapshot` when answering for many tasks so the log is read once
 
+**Execution State Machine** (`execution/machine.lua`)
+- Layered over the log and the reducer: the only sanctioned way to write a transition, since `log.lua` appends anything it is handed and `state.lua` folds anything it finds
+- Legal moves: `TODO → STARTED → PAUSED → DONE`, plus `PAUSED → STARTED` to resume and `STARTED → DONE` to finish without pausing; DONE is terminal
+- A task the log has never mentioned is implicitly TODO, so a fresh heading can be started without seeding an event first
+- `transition(task, target, opts?)` reads current state, rejects illegal moves with an error, and returns the appended events; `opts` carries `at` (fixed timestamp) and `snapshot` (state the caller already folded)
+- Single-STARTED invariant: starting a task auto-pauses whatever was STARTED, and the pause/start pair is appended in one write via `log.append_events()` so the log never shows two started tasks or a pause that lost its start
+- `can(from, to)` exposes the transition table for callers that need to know what is legal before asking
+
 **Async Utilities** (`utils/async.lua`)
 - Custom Promise implementation with `then_()`, `catch_()`, and `await()`
 - `async.run()` wraps coroutines for async operations

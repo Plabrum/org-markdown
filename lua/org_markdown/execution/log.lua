@@ -123,13 +123,11 @@ function M.parse_event(line)
 	}
 end
 
---- Append one transition to the log. Existing entries are never rewritten.
---- `transition` is `{ from = <state|nil>, to = <state>, at = <ISO timestamp|nil> }`;
---- `at` defaults to now and exists so callers (and tests) can supply a fixed time.
+--- Build the event a transition records, without writing it.
 ---@param task string|table
 ---@param transition { from: string|nil, to: string, at: string|nil }
 ---@return table|nil event, string|nil err
-function M.append_event(task, transition)
+local function build_event(task, transition)
 	local id, err = M.task_id(task)
 	if not id then
 		return nil, err
@@ -139,20 +137,55 @@ function M.append_event(task, transition)
 		return nil, "transition requires a `to` state"
 	end
 
-	local event = {
+	return {
 		timestamp = transition.at or M.now(),
 		from = transition.from,
 		to = transition.to,
 		task = id,
 	}
+end
+
+--- Append one transition to the log. Existing entries are never rewritten.
+--- `transition` is `{ from = <state|nil>, to = <state>, at = <ISO timestamp|nil> }`;
+--- `at` defaults to now and exists so callers (and tests) can supply a fixed time.
+---@param task string|table
+---@param transition { from: string|nil, to: string, at: string|nil }
+---@return table|nil event, string|nil err
+function M.append_event(task, transition)
+	local events, err = M.append_events({ { task = task, transition = transition } })
+	if not events then
+		return nil, err
+	end
+	return events[1]
+end
+
+--- Append several transitions as a single write, so a run of events that only
+--- makes sense together (auto-pausing one task to start another) can never land
+--- half-written. Each entry is `{ task = <task>, transition = <transition> }`.
+---@param entries { task: string|table, transition: table }[]
+---@return table[]|nil events, string|nil err
+function M.append_events(entries)
+	local events, lines = {}, {}
+	for _, entry in ipairs(entries) do
+		local event, err = build_event(entry.task, entry.transition)
+		if not event then
+			return nil, err
+		end
+		events[#events + 1] = event
+		lines[#lines + 1] = M.format_event(event) .. "\n"
+	end
+
+	if #lines == 0 then
+		return events
+	end
 
 	local path = M.log_path()
-	local ok, write_err = platform.fs.append_file(path, M.format_event(event) .. "\n")
+	local ok, write_err = platform.fs.append_file(path, table.concat(lines))
 	if not ok then
 		return nil, "could not append to " .. path .. ": " .. (write_err or "unknown error")
 	end
 
-	return event
+	return events
 end
 
 return M
