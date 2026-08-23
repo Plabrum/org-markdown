@@ -63,6 +63,10 @@ function M.register()
 		desc = "OrgMarkdown: Insert a link to a file or heading",
 	})
 
+	vim.api.nvim_create_user_command("MarkdownFollowLink", link.follow, {
+		desc = "OrgMarkdown: Follow the link under the cursor",
+	})
+
 	vim.api.nvim_create_user_command("MarkdownPromote", function()
 		editing.promote_heading(0)
 	end, {
@@ -109,6 +113,11 @@ function M.register()
 
 	vim.keymap.set("n", keymaps.insert_link, "<cmd>MarkdownInsertLink<CR>", {
 		desc = "OrgMarkdown: Insert link to node",
+		silent = true,
+	})
+
+	vim.keymap.set("n", keymaps.follow_link, "<cmd>MarkdownFollowLink<CR>", {
+		desc = "OrgMarkdown: Follow link under cursor",
 		silent = true,
 	})
 

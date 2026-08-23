@@ -123,6 +123,12 @@ The plugin follows a modular architecture with clear separation of concerns:
 - `insert()` is the editor side: picks a target through `utils/picker.lua` and puts the link at the cursor (`:MarkdownInsertLink`, `keymaps.insert_link`)
 - Linking to a node is what gives it an identity — a target that has never been linked to is identified on the spot
 
+**Following Links** (`node/link.lua`)
+- The reverse trip: the id under the cursor is resolved through `node/index.lua` to wherever that node lives now, so a link still lands after its target was renamed or refiled
+- `link_at(line, col?)` returns the link the cursor sits on, falling back to the first link on the line
+- `resolve(id, index?)` returns the location, or `nil, err` for an id no file in scope carries — an unresolved link is reported, never an error
+- `follow()` is the editor side: jumps to the target file and, for a heading node, its line (`:MarkdownFollowLink`, `keymaps.follow_link`)
+
 **Async Utilities** (`utils/async.lua`)
 - Custom Promise implementation with `then_()`, `catch_()`, and `await()`
 - `async.run()` wraps coroutines for async operations
