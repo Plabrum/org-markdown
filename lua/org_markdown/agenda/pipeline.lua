@@ -17,6 +17,8 @@ local document = require("org_markdown.utils.document")
 local frontmatter = require("org_markdown.utils.frontmatter")
 local datetime = require("org_markdown.utils.datetime")
 local ingest = require("org_markdown.sync.ingest")
+local execution_log = require("org_markdown.execution.log")
+local execution_state = require("org_markdown.execution.state")
 
 local M = {}
 
@@ -131,6 +133,40 @@ function M.scan_files(file_patterns)
 	end
 
 	return agenda_items
+end
+
+-- Attach the derived execution state of one item (and its children) from an
+-- already-folded snapshot. An item the log has never mentioned gets nothing.
+local function annotate_item(item, snapshot)
+	local id = execution_log.task_id(item)
+	local entry = id and snapshot.tasks[id]
+	if entry then
+		item.execution = entry.state
+		item.active = id == snapshot.started
+	end
+
+	for _, child in ipairs(item.children or {}) do
+		annotate_item(child, snapshot)
+	end
+
+	return item
+end
+
+-- Annotate items with execution state, folded from the log rather than read off
+-- the heading (nothing about execution is stored there). The log is read once
+-- for the whole view, and the STARTED slot's holder is flagged `active` so the
+-- one task actually running stays distinguishable from a stale STARTED left by
+-- a log that lost its pause.
+-- @param items table[] agenda items
+-- @param snapshot table|nil state the caller already folded
+-- @return table[] the same items, annotated in place
+function M.apply_execution_state(items, snapshot)
+	snapshot = snapshot or execution_state.snapshot()
+
+	for _, item in ipairs(items) do
+		annotate_item(item, snapshot)
+	end
+	return items
 end
 
 ------------------core engine functions --------------------------
@@ -399,7 +435,11 @@ function M.compute_view(view_id, view_def)
 	local all_data = M.scan_files(file_patterns)
 	local items = M.get_source_items(all_data, view_def.source or "tasks")
 
-	-- 2. Filter → Sort → Group
+	-- 2. Annotate with execution state before filtering, so the states a view
+	-- renders come from the reducer and survive the copies filtering makes.
+	items = M.apply_execution_state(items)
+
+	-- 3. Filter → Sort → Group
 	items = M.apply_filters(items, view_def.filters)
 	items = M.apply_sort(items, view_def.sort)
 	local groups = M.group_items(items, view_def.group_by)

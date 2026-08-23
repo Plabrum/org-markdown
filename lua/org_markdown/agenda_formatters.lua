@@ -8,6 +8,27 @@ local function build_tags_str(tags)
 	return " :" .. table.concat(tags, ":") .. ":"
 end
 
+-- Derived execution state (see `execution/state.lua`), shown next to the
+-- heading's own TODO state. The task holding the STARTED slot gets the filled
+-- marker, so the one thing actually running reads differently from a stale
+-- STARTED left behind by a log that lost its pause.
+local EXECUTION_MARKERS = { STARTED = "▷", PAUSED = "⏸", DONE = "✓" }
+local ACTIVE_MARKER = "▶"
+
+-- Helper: Build execution state string
+local function build_execution_str(item)
+	if not item.execution then
+		return ""
+	end
+	local marker = item.active and ACTIVE_MARKER or EXECUTION_MARKERS[item.execution]
+	return " " .. (marker and marker .. " " or "") .. item.execution
+end
+
+-- Helper: Build the trailing execution state + tags shared by every style
+local function build_suffix(item)
+	return build_execution_str(item) .. build_tags_str(item.tags)
+end
+
 -- Helper: Wrap text to fit in box width
 local function wrap_text(text, max_width)
 	local lines = {}
@@ -36,13 +57,12 @@ end
 
 -- Format all-day event in blocks style
 local function format_blocks_all_day(item, indent)
-	local tags_str = build_tags_str(item.tags)
-	return indent .. "▓▓ " .. item.title .. " (all-day)" .. tags_str
+	return indent .. "▓▓ " .. item.title .. " (all-day)" .. build_suffix(item)
 end
 
 -- Format time range event in blocks style
 local function format_blocks_time_range(item, indent, box_width)
-	local title_with_tags = item.title .. build_tags_str(item.tags)
+	local title_with_tags = item.title .. build_suffix(item)
 	local lines = wrap_text(title_with_tags, box_width - 4)
 
 	local result = {}
@@ -59,14 +79,12 @@ end
 
 -- Format simple time event in blocks style
 local function format_blocks_simple_time(item, indent)
-	local tags_str = build_tags_str(item.tags)
-	return indent .. item.start_time .. "  " .. item.title .. tags_str
+	return indent .. item.start_time .. "  " .. item.title .. build_suffix(item)
 end
 
 -- Format simple event (no time) in blocks style
 local function format_blocks_simple(item, indent)
-	local tags_str = build_tags_str(item.tags)
-	return indent .. item.title .. tags_str
+	return indent .. item.title .. build_suffix(item)
 end
 
 -- Format item in blocks style
@@ -115,8 +133,7 @@ function M.format_timeline(item, indent)
 		table.insert(parts, item.title)
 	end
 
-	local tags_str = build_tags_str(item.tags)
-	return indent .. table.concat(parts, " ") .. tags_str
+	return indent .. table.concat(parts, " ") .. build_suffix(item)
 end
 
 -- Main formatting entry point

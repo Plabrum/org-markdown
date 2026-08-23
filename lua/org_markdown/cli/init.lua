@@ -19,6 +19,8 @@ local ITEM_FIELDS = {
 	"tags",
 	"source",
 	"depth",
+	"execution",
+	"active",
 }
 
 -- Recursively project an agenda item onto its serializable fields.

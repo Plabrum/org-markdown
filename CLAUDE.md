@@ -102,6 +102,13 @@ The plugin follows a modular architecture with clear separation of concerns:
 - `start()`, `pause()` and `done()` are the editor entry points (`:MarkdownStartTask`, `:MarkdownPauseTask`, `:MarkdownDoneTask`; `keymaps.start_task`, `keymaps.pause_task`, `keymaps.done_task`); an illegal move is reported, never written
 - Locating and phrasing stay buffer-free so the CLI can reuse them; only the entry points touch `vim.*`
 
+**Execution State in the Agenda** (`agenda/pipeline.lua`, `agenda_formatters.lua`)
+- Every view shows execution state, folded from the log rather than read off the heading — nothing about execution is stored there, so the agenda asks the reducer like everyone else
+- `pipeline.apply_execution_state(items, snapshot?)` annotates items (and their children) with `execution` and `active`; `compute_view` calls it once per view, before filtering, so the log is read once and the annotation survives the copies filtering makes
+- `active` flags the task holding the STARTED slot, which is what distinguishes the one thing actually running from a stale STARTED left by a log that lost its pause
+- Formatters render the state after the title and before the tags, marked `▶ STARTED` for the active task, `▷ STARTED` / `⏸ PAUSED` / `✓ DONE` otherwise; a task the log has never mentioned renders exactly as before
+- Annotation happens in the vim-free pipeline and both fields ride the CLI's JSON projection, so the in-editor agenda (which renders what the CLI computes) and `org agenda` show the same states
+
 **Node IDs** (`node/id.lua`)
 - A node is a file or a heading; both carry a stable UUID so links survive rename and refile
 - A file keeps its id as `id` in frontmatter; a heading keeps it as an `ID: [uuid]` property under the heading line (written via `utils/document.lua`)
