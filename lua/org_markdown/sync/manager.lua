@@ -2,6 +2,8 @@ local config = require("org_markdown.config")
 local utils = require("org_markdown.utils.utils")
 local datetime = require("org_markdown.utils.datetime")
 local async = require("org_markdown.utils.async")
+local ingest = require("org_markdown.sync.ingest")
+local platform = require("org_markdown.platform")
 
 local M = {}
 
@@ -306,6 +308,12 @@ function M.register_plugin(plugin_module)
 		config.sync.plugins[plugin_module.name].sync_file = plugin_module.sync_file
 	end
 
+	-- Write mode from plugin definition: "replace" (default) rewrites the file
+	-- each pull, "append" ingests into a source log without touching prior entries
+	if not config.sync.plugins[plugin_module.name].mode then
+		config.sync.plugins[plugin_module.name].mode = plugin_module.mode or "replace"
+	end
+
 	-- Merge default config into config.sync.plugins[name]
 	if plugin_module.default_config then
 		-- Deep merge default config
@@ -482,6 +490,46 @@ local function write_sync_file(items, plugin_name, plugin_config, stats)
 	utils.write_lines(filepath, lines)
 end
 
+--- Append items to an ingestion-mode source log, skipping entries already there
+--- @param items table Array of items
+--- @param plugin_config table Plugin configuration
+--- @return table|nil, string|nil Keys appended, error message
+local function append_sync_file(items, plugin_config)
+	local entries = {}
+	for _, item in ipairs(items) do
+		table.insert(entries, {
+			key = ingest.entry_key(item),
+			lines = format_item_as_markdown(item, plugin_config),
+		})
+	end
+
+	return ingest.append_entries(platform.path.expand(plugin_config.sync_file), entries)
+end
+
+--- Write a pull's items in whichever mode the plugin declares: "replace"
+--- rewrites the file, "append" only adds entries the log doesn't already carry.
+--- @param items table Array of validated items
+--- @param plugin_name string Plugin name
+--- @param plugin_config table Plugin configuration
+--- @param stats table Sync statistics
+--- @return number Items written (appended entries in append mode)
+local function write_items(items, plugin_name, plugin_config, stats)
+	if plugin_config.mode ~= "append" then
+		write_sync_file(items, plugin_name, plugin_config, stats)
+		return #items
+	end
+
+	local appended, err = append_sync_file(items, plugin_config)
+	if not appended then
+		vim.schedule(function()
+			vim.notify(string.format("[%s] %s", plugin_name, err), vim.log.levels.ERROR)
+		end)
+		return 0
+	end
+
+	return #appended
+end
+
 -- =========================================================================
 -- SYNC OPERATIONS
 -- =========================================================================
@@ -545,7 +593,7 @@ function M.sync_plugin(plugin_name)
 		end, items)
 
 		-- Write to sync file
-		write_sync_file(valid_items, plugin_name, plugin_config, stats)
+		local written = write_items(valid_items, plugin_name, plugin_config, stats)
 
 		-- Clear syncing flag
 		plugin._is_syncing = false
@@ -561,7 +609,13 @@ function M.sync_plugin(plugin_name)
 		-- Success notification
 		local count = stats.count or #valid_items
 		local msg
-		if count == 0 then
+		if plugin_config.mode == "append" then
+			if written == 0 then
+				msg = string.format("No new items from %s", plugin.description or plugin_name)
+			else
+				msg = string.format("Ingested %d new items from %s", written, plugin.description or plugin_name)
+			end
+		elseif count == 0 then
 			msg = string.format("Sync completed for %s: file cleared (all items deleted)", plugin.description or plugin_name)
 		else
 			msg = string.format("Synced %d items from %s", count, plugin.description or plugin_name)
@@ -710,7 +764,7 @@ function M.pull_all_async()
 				end, items)
 
 				-- Write to sync file (even if empty - clears deleted items)
-				write_sync_file(valid_items, plugin_name, plugin_config, stats)
+				write_items(valid_items, plugin_name, plugin_config, stats)
 
 				plugin._is_syncing = false
 			end)

@@ -351,6 +351,7 @@ When creating a sync plugin:
   default_config = { ... },                -- Optional: Merged into config.sync.plugins.plugin_name
   setup = function(config) ... end,        -- Optional: Validation/initialization (return false to disable)
   sync = function() ... end,               -- Required: Main sync operation
+  mode = "replace",                        -- Optional: "replace" (default) or "append" (ingestion)
   supports_auto_sync = true,               -- Optional: Enable auto-sync support
   command_name = "MarkdownSyncFoo",        -- Optional: Override default command name
   keymap = "<leader>osp",                  -- Optional: Default keymap
@@ -438,9 +439,17 @@ Items can represent calendar events, tasks, issues, or simple notes. All date/st
   - `done`, `completed` → `DONE`
   - `canceled` → `CANCELLED`
 
+#### Ingestion Mode (`sync/ingest.lua`)
+
+- A plugin with `mode = "append"` ingests into a source log instead of mirroring a source: entries are only appended, and prior entries are never rewritten or reordered
+- Each appended entry carries a stable key on the line below its heading (`<!-- key: ... -->`); a re-run skips keys already in the file, so an item lands exactly once no matter how often the source replays it
+- The key is `item.key` when the plugin has a stable id of its own, otherwise it is derived from title + date + time (`ingest.entry_key()`)
+- `ingest.append_entries(path, entries)` is the append primitive; it dedups against the file and within the batch, and writes once through the platform shim (so ingestion works under the CLI)
+- Append-mode files get no auto-managed header — they are meant to be read and edited in place
+
 #### Important Notes
 
-- **AUTO-MANAGED FILES**: Sync files are completely replaced on each sync. Do not manually edit them.
+- **AUTO-MANAGED FILES**: Sync files in the default `mode = "replace"` are completely replaced on each sync. Do not manually edit them.
 - **Agenda Integration**: Items with `status` appear in task-based agenda views. Items with tracked dates (`<YYYY-MM-DD>`) appear in calendar-based views.
 - **File Format**: All items are formatted as markdown headings with optional dates, tags, and metadata.
 
