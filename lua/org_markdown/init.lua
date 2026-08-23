@@ -6,7 +6,7 @@ function M.setup(opts)
 	-- Load sync plugins BEFORE registering commands
 	local sync_manager = require("org_markdown.sync.manager")
 	local config = require("org_markdown.config")
-	local plugin_names = { "calendar", "linear", "sheets" } -- Built-in plugins
+	local plugin_names = { "calendar", "linear", "sheets", "granola" } -- Built-in plugins
 
 	-- Only load plugins that are explicitly mentioned in the config
 	-- The plugin's default_config and setup() will handle enabled state

@@ -136,6 +136,13 @@ function M.append_entries(path, entries)
 	local content = platform.fs.read_file(path)
 	local prefix = (content and content ~= "" and not content:match("\n$")) and "\n" or ""
 
+	-- A source log usually lives in a directory of its own (`~/org/sources/`),
+	-- which the first ingestion has to create.
+	local dir = path:match("^(.*)/[^/]+$")
+	if dir then
+		platform.fs.mkdirp(dir)
+	end
+
 	local ok, err = platform.fs.append_file(path, prefix .. table.concat(lines, "\n") .. "\n")
 	if not ok then
 		return nil, "could not append to " .. path .. ": " .. (err or "unknown error")

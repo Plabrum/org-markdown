@@ -11,6 +11,7 @@
 --- @field read_file fun(path: string): string|nil, string|nil
 --- @field write_file fun(path: string, content: string): boolean, string|nil
 --- @field append_file fun(path: string, content: string): boolean, string|nil
+--- @field mkdirp fun(dir: string): boolean, string|nil
 ---
 --- @class OrgPlatformPath
 --- @field expand fun(p: string): string

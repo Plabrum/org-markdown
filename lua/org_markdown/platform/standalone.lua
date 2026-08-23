@@ -91,6 +91,18 @@ function M.fs.append_file(path, content)
 	return true
 end
 
+--- Create a directory and any missing parents. A directory that already exists
+--- is left alone (`mkdir -p` is already idempotent).
+---@param dir string
+---@return boolean ok, string|nil err
+function M.fs.mkdirp(dir)
+	local ok = os.execute("mkdir -p -- " .. shell_quote(dir))
+	if ok == true or ok == 0 then
+		return true
+	end
+	return false, "could not create " .. dir
+end
+
 --- Expand a leading `~` and `$VAR`/`${VAR}` environment references.
 ---@param p string
 ---@return string

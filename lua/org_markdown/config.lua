@@ -57,7 +57,10 @@ local M = {
 	},
 	agendas = {
 		window_method = "float",
-		ignore_patterns = { "*.archive.md" }, -- Patterns to exclude from agenda scanning
+		-- Patterns to exclude from agenda scanning. Ingestion logs live under
+		-- `sources/`: their entries are raw source material, and only become
+		-- agenda items once promoted out of the log.
+		ignore_patterns = { "*.archive.md", "sources/*" },
 		views = {
 			tasks = {
 				order = 1,

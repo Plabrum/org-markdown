@@ -205,7 +205,9 @@ The agenda system uses a configurable view architecture that processes items thr
 ```lua
 agendas = {
   window_method = "float",                    -- "float", "vertical", or "horizontal"
-  ignore_patterns = { "*.archive.md" },      -- Patterns to exclude from all agenda views
+  ignore_patterns = { "*.archive.md", "sources/*" }, -- Patterns to exclude from all agenda views
+                                              -- (ingestion logs under sources/ only reach the
+                                              -- agenda once promoted out of the log)
   views = { ... }                             -- View definitions (see below)
 }
 ```
@@ -446,6 +448,17 @@ Items can represent calendar events, tasks, issues, or simple notes. All date/st
 - The key is `item.key` when the plugin has a stable id of its own, otherwise it is derived from title + date + time (`ingest.entry_key()`)
 - `ingest.append_entries(path, entries)` is the append primitive; it dedups against the file and within the batch, and writes once through the platform shim (so ingestion works under the CLI)
 - Append-mode files get no auto-managed header — they are meant to be read and edited in place
+- `ingest.append_entries()` creates the log's parent directory, since source logs live in one of their own (`~/org/sources/`)
+
+**Granola Plugin** (`sync/plugins/granola/`) — the first ingestion source
+- Appends the action items of finished Granola meetings to `~/org/sources/granola.md` (`mode = "append"`)
+- Reads Granola's local cache (`cache-v3.json`), whose `cache` key holds the real state as a nested JSON string; `cache.load()` unwraps both layers
+- A meeting is finished once its calendar event's end time has passed (a meeting with no event falls back to when it was last written to) — notes are still being taken while it runs
+- Notes arrive as ProseMirror trees (generated summary panels) or markdown (hand-written notes); `cache.flatten()` reduces both to markdown lines and `cache.action_items()` extracts from those
+- An action item is an unchecked checkbox anywhere in the notes, or a bullet under a heading named by `action_item_headings`; an item already ticked off is skipped
+- Item text is ingested verbatim; the origin (meeting title and date) goes in the body, so an entry still names its meeting after promotion
+- Entry key is `granola:<meeting id>::<item text>`, so re-reading a meeting never re-ingests it while an item added later still lands
+- `lookback_days` (default 30) bounds the first sync; set to 0 for no limit
 
 #### Important Notes
 

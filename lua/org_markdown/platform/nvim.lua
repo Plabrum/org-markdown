@@ -76,6 +76,22 @@ function M.fs.append_file(path, content)
 	return true
 end
 
+--- Create a directory and any missing parents. A directory that already exists
+--- is left alone.
+---@param dir string
+---@return boolean ok, string|nil err
+function M.fs.mkdirp(dir)
+	if vim.fn.isdirectory(dir) == 1 then
+		return true
+	end
+
+	local ok, err = pcall(vim.fn.mkdir, dir, "p")
+	if not ok then
+		return false, tostring(err)
+	end
+	return true
+end
+
 --- Expand `~` and environment variables via `vim.fn.expand`.
 ---@param p string
 ---@return string
