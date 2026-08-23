@@ -2,6 +2,7 @@ local config = require("org_markdown.config")
 local utils = require("org_markdown.utils.utils")
 local datetime = require("org_markdown.utils.datetime")
 local async = require("org_markdown.utils.async")
+local complete = require("org_markdown.sync.complete")
 local ingest = require("org_markdown.sync.ingest")
 local platform = require("org_markdown.platform")
 
@@ -490,20 +491,34 @@ local function write_sync_file(items, plugin_name, plugin_config, stats)
 	utils.write_lines(filepath, lines)
 end
 
---- Append items to an ingestion-mode source log, skipping entries already there
+--- Append items to an ingestion-mode source log, skipping entries already there.
+--- An item the source reports as done is a state report rather than new
+--- material: it never becomes an entry of its own, it completes the heading
+--- promoted from it on an earlier sync.
 --- @param items table Array of items
 --- @param plugin_config table Plugin configuration
 --- @return table|nil, string|nil Keys appended, error message
 local function append_sync_file(items, plugin_config)
+	local path = platform.path.expand(plugin_config.sync_file)
+
 	local entries = {}
 	for _, item in ipairs(items) do
-		table.insert(entries, {
-			key = ingest.entry_key(item),
-			lines = format_item_as_markdown(item, plugin_config),
-		})
+		if not complete.reports_done(item) then
+			table.insert(entries, {
+				key = ingest.entry_key(item),
+				lines = format_item_as_markdown(item, plugin_config),
+			})
+		end
 	end
 
-	return ingest.append_entries(platform.path.expand(plugin_config.sync_file), entries)
+	local appended, err = ingest.append_entries(path, entries)
+	if not appended then
+		return nil, err
+	end
+
+	complete.sweep(path, items)
+
+	return appended
 end
 
 --- Write a pull's items in whichever mode the plugin declares: "replace"

@@ -479,12 +479,21 @@ Items can represent calendar events, tasks, issues, or simple notes. All date/st
 - The entry is stamped `promoted` (`ingest.set_status`) only once its TODO is on disk, so a failure part-way leaves the entry pending rather than losing it; an entry already `promoted` or `rejected` is refused, since promoting twice would duplicate the item in planning
 - Trigger-agnostic: choosing entries and asking the user belongs to whatever drives it. Writing goes through `capture/core.insert_under_heading()` and the platform shim, so promotion runs under the CLI too
 
+#### Completion (`sync/complete.lua`)
+
+- The external system owns the state of its own items: when the source reports an item done, the heading promoted from it is marked DONE in place and stamped `COMPLETED_AT: [YYYY-MM-DD Day]`, so it drops out of planning with no manual cleanup
+- The heading is found through the promotion back-link, read the other way round (`node/backlinks.to()`), so the completion still lands after the heading or the entry has been refiled — nothing is stored to make this work
+- Only a link labelled `**Source:**` counts; an incidental link to the entry is someone referring to it, not a copy of it in planning
+- `complete.entry(source, opts?)` completes what was promoted out of one entry (`source` as promotion takes it; `opts` carries `date` and a `scan` passed to `queries.find_markdown_files`); `complete.sweep(log, items, opts?)` does that for every item of a pull that reports done
+- `complete.reports_done(item)` is what a report of done looks like: `item.done`, or a `status` of `DONE`/`CANCELLED`. The sync manager runs the sweep after an append-mode pull, and such an item never becomes an entry of its own — it is a state report, not new material
+- An item whose entry was never ingested or never promoted has nothing to complete and is passed over, not reported as a failure
+
 **Granola Plugin** (`sync/plugins/granola/`) — the first ingestion source
 - Appends the action items of finished Granola meetings to `~/org/sources/granola.md` (`mode = "append"`)
 - Reads Granola's local cache (`cache-v3.json`), whose `cache` key holds the real state as a nested JSON string; `cache.load()` unwraps both layers
 - A meeting is finished once its calendar event's end time has passed (a meeting with no event falls back to when it was last written to) — notes are still being taken while it runs
 - Notes arrive as ProseMirror trees (generated summary panels) or markdown (hand-written notes); `cache.flatten()` reduces both to markdown lines and `cache.action_items()` extracts from those
-- An action item is an unchecked checkbox anywhere in the notes, or a bullet under a heading named by `action_item_headings`; an item already ticked off is skipped
+- An action item is a checkbox anywhere in the notes, or a bullet under a heading named by `action_item_headings`; an item ticked off in Granola is reported done (`status = "DONE"`), which completes whatever was promoted from it
 - Item text is ingested verbatim; the origin (meeting title and date) goes in the body, so an entry still names its meeting after promotion
 - Entry key is `granola:<meeting id>::<item text>`, so re-reading a meeting never re-ingests it while an item added later still lands
 - `lookback_days` (default 30) bounds the first sync; set to 0 for no limit

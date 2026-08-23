@@ -48,23 +48,24 @@ local M = {
 
 --- Turn one action item into an ingestion entry. The key is the meeting id
 --- plus the item text, so re-reading the same meeting never ingests it twice
---- while an item added to the notes later still lands.
+--- while an item added to the notes later still lands. An item ticked off in
+--- Granola is reported DONE, which completes whatever was promoted from it.
 --- @param meeting table Meeting from `cache.meetings()`
---- @param text string Action item text, verbatim
+--- @param item table Action item from `cache.action_items()`
 --- @param plugin_config table Plugin configuration
 --- @return table item
-function M.to_item(meeting, text, plugin_config)
+function M.to_item(meeting, item, plugin_config)
 	local origin = { string.format("**Meeting:** %s", meeting.title) }
 	if meeting.date then
 		table.insert(origin, string.format("**Date:** %s", datetime.to_org_string(meeting.date)))
 	end
 
 	return {
-		title = text,
-		status = plugin_config.status,
+		title = item.text,
+		status = item.done and "DONE" or plugin_config.status,
 		tags = plugin_config.tags,
 		body = table.concat(origin, "\n"),
-		key = string.format("granola:%s::%s", meeting.id, text),
+		key = string.format("granola:%s::%s", meeting.id, item.text),
 	}
 end
 
@@ -87,8 +88,8 @@ function M.pull()
 
 	local items = {}
 	for _, meeting in ipairs(meetings) do
-		for _, text in ipairs(cache.action_items(meeting.lines, plugin_config.action_item_headings or {})) do
-			table.insert(items, M.to_item(meeting, text, plugin_config))
+		for _, item in ipairs(cache.action_items(meeting.lines, plugin_config.action_item_headings or {})) do
+			table.insert(items, M.to_item(meeting, item, plugin_config))
 		end
 	end
 

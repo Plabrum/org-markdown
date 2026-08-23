@@ -130,6 +130,16 @@ end
 
 -- action items --------------------------------------------------------------
 
+--- The texts of a list of action items, for the cases the done flag is beside
+--- the point.
+local function texts(items)
+	local out = {}
+	for _, item in ipairs(items) do
+		table.insert(out, item.text)
+	end
+	return out
+end
+
 T["action_items - takes bullets under an action-item heading"] = function()
 	local items = cache.action_items({
 		"## Summary",
@@ -139,7 +149,7 @@ T["action_items - takes bullets under an action-item heading"] = function()
 		"- Book the room",
 	}, HEADINGS)
 
-	MiniTest.expect.equality(items, { "Send the deck", "Book the room" })
+	MiniTest.expect.equality(texts(items), { "Send the deck", "Book the room" })
 end
 
 T["action_items - the section ends at the next heading"] = function()
@@ -150,22 +160,25 @@ T["action_items - the section ends at the next heading"] = function()
 		"- Not an action item",
 	}, HEADINGS)
 
-	MiniTest.expect.equality(items, { "Send the deck" })
+	MiniTest.expect.equality(texts(items), { "Send the deck" })
 end
 
 T["action_items - takes an unchecked checkbox anywhere"] = function()
 	local items = cache.action_items({ "## Notes", "- [ ] Send the deck" }, HEADINGS)
-	MiniTest.expect.equality(items, { "Send the deck" })
+	MiniTest.expect.equality(items, { { text = "Send the deck", done = false } })
 end
 
-T["action_items - skips an item already ticked off"] = function()
+T["action_items - reports an item ticked off as done"] = function()
 	local items = cache.action_items({ "## Action Items", "- [x] Send the deck", "- Book the room" }, HEADINGS)
-	MiniTest.expect.equality(items, { "Book the room" })
+	MiniTest.expect.equality(items, {
+		{ text = "Send the deck", done = true },
+		{ text = "Book the room", done = false },
+	})
 end
 
 T["action_items - reports an item once however often it appears"] = function()
 	local items = cache.action_items({ "## Action Items", "- Send the deck", "- [ ] Send the deck" }, HEADINGS)
-	MiniTest.expect.equality(items, { "Send the deck" })
+	MiniTest.expect.equality(texts(items), { "Send the deck" })
 end
 
 -- meetings ------------------------------------------------------------------
@@ -212,7 +225,7 @@ T["meetings - carries both the summary and the hand-written notes"] = function()
 	}))
 
 	local meetings = cache.meetings(state, { now = cache.parse_timestamp("2026-08-23T10:00:00Z") })
-	MiniTest.expect.equality(cache.action_items(meetings[1].lines, HEADINGS), { "Send the deck", "Book the room" })
+	MiniTest.expect.equality(texts(cache.action_items(meetings[1].lines, HEADINGS)), { "Send the deck", "Book the room" })
 end
 
 -- pull ----------------------------------------------------------------------
@@ -307,6 +320,57 @@ T["sync - syncing again ingests nothing new"] = function()
 	vim.wait(300)
 
 	MiniTest.expect.equality(utils.read_lines(log_path), first)
+end
+
+T["sync - an item ticked off in Granola completes what was promoted from it"] = function()
+	local promote = require("org_markdown.sync.promote")
+	local parser = require("org_markdown.utils.parser")
+
+	local root = vim.fn.tempname()
+	vim.fn.mkdir(root .. "/sources", "p")
+	utils.write_lines(root .. "/refile.md", { "# Inbox", "" })
+
+	local log_path = root .. "/sources/granola.md"
+	local plugin_config = use_granola(write_cache(state_of(meeting("m1", "Kickoff", { "Send the deck" }))), log_path)
+	sync_and_wait(log_path, 4)
+
+	local refile_paths = config.refile_paths
+	config.refile_paths = { root }
+	promote.entry({ file = log_path, key = "granola:m1::Send the deck" }, { file = root .. "/refile.md" })
+
+	-- The item is ticked off in the meeting, so the source now reports it done.
+	plugin_config.cache_file = write_cache(state_of(meeting("m1", "Kickoff", {}, {
+		notes_markdown = "- [x] Send the deck",
+	})))
+
+	manager.sync_plugin("granola")
+	vim.wait(1000, function()
+		for _, line in ipairs(utils.read_lines(root .. "/refile.md")) do
+			if line:find("DONE Send the deck", 1, true) then
+				return true
+			end
+		end
+		return false
+	end)
+	config.refile_paths = refile_paths
+
+	local state, completed_at = nil, nil
+	local lines = utils.read_lines(root .. "/refile.md")
+	for i, line in ipairs(lines) do
+		local parsed = parser.parse_headline(line)
+		if parsed and parsed.text == "Send the deck" then
+			state = parsed.state
+			completed_at = lines[i + 1]
+		end
+	end
+
+	MiniTest.expect.equality(state, "DONE")
+	MiniTest.expect.equality(completed_at, "COMPLETED_AT: [" .. os.date("%Y-%m-%d %a") .. "]")
+
+	-- A done item is a state report, not new material: it adds no entry of its
+	-- own to the log.
+	local ingest = require("org_markdown.sync.ingest")
+	MiniTest.expect.equality(#ingest.entries(log_path), 1)
 end
 
 T["sync - the source log is kept out of agenda scanning"] = function()

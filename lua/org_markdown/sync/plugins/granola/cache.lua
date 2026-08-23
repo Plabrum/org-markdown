@@ -159,13 +159,16 @@ local function is_action_heading(text, headings)
 end
 
 --- Extract the action items from a meeting's markdown lines. Two things count:
---- an unchecked checkbox anywhere in the notes, and any bullet under a heading
---- the config names as an action-item section -- which is where Granola's
---- generated summary puts them, unmarked. An item already ticked off in the
---- meeting is not an action item any more, so it is skipped.
+--- a checkbox anywhere in the notes, and any bullet under a heading the config
+--- names as an action-item section -- which is where Granola's generated
+--- summary puts them, unmarked.
+---
+--- An item ticked off in the meeting is reported as done rather than dropped:
+--- Granola owns the state of its own items, so a tick there is what completes
+--- the heading promoted from the item here.
 ---@param lines string[]
 ---@param headings string[] Heading texts that open an action-item section
----@return string[] items Item texts, in the order they appear
+---@return { text: string, done: boolean }[] items In the order they appear
 function M.action_items(lines, headings)
 	local items, seen = {}, {}
 	local in_section = false
@@ -178,12 +181,11 @@ function M.action_items(lines, headings)
 			local bullet = line:match(BULLET)
 			if bullet then
 				local box, text = bullet:match(CHECKBOX)
-				local unchecked = box == " "
-				if (box and unchecked) or (not box and in_section) then
+				if box or in_section then
 					local item = compat.trim(text or bullet)
 					if item ~= "" and not seen[item] then
 						seen[item] = true
-						items[#items + 1] = item
+						items[#items + 1] = { text = item, done = box ~= nil and box ~= " " }
 					end
 				end
 			end
