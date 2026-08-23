@@ -29,10 +29,27 @@
 -- All IO goes through the platform shim, so ingestion works under the CLI too.
 
 local compat = require("org_markdown.compat.vim")
+local config = require("org_markdown.config")
 local platform = require("org_markdown.platform")
 local tree = require("org_markdown.utils.tree")
 
 local M = {}
+
+--- Where the registered ingestion sources log to: the `sync_file` of every
+--- plugin running in append mode. A source log is raw source material rather
+--- than work the user has accepted, so the agenda excludes these by
+--- construction. Reading the registry rather than trusting a path convention
+--- means a log the user relocated stays excluded without a second config step.
+---@return string[] paths
+function M.log_paths()
+	local paths = {}
+	for _, plugin_config in pairs((config.sync or {}).plugins or {}) do
+		if plugin_config.mode == "append" and plugin_config.sync_file then
+			paths[#paths + 1] = platform.path.expand(plugin_config.sync_file)
+		end
+	end
+	return paths
+end
 
 --- The dispositions an ingested entry can carry.
 M.STATUS = { NEW = "new", PROMOTED = "promoted", REJECTED = "rejected" }

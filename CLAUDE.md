@@ -465,6 +465,7 @@ Items can represent calendar events, tasks, issues, or simple notes. All date/st
 - `ingest.entries(path)` lists every entry with its status and marker line; `ingest.pending(path)` narrows that to what is still `new`, and `ingest.status_of(path, key)` answers for one key
 - `ingest.set_status(path, key, status)` rewrites just that entry's marker line, leaving the rest of the log as written; a marker with no status reads as `new`, so logs written before statuses existed still work
 - `ingest.append_entries(path, entries)` is the append primitive; it dedups against the file and within the batch, and writes once through the platform shim (so ingestion works under the CLI)
+- A source log is untracked by construction: `ingest.log_paths()` lists the `sync_file` of every append-mode plugin, and the agenda scan excludes those files outright (`queries.find_markdown_files({ ignore_files = ... })`). This is on top of `agendas.ignore_patterns`, so a log stays out of every view even when the user relocates it or replaces the default patterns — no config step
 - Append-mode files get no auto-managed header — they are meant to be read and edited in place
 - `ingest.append_entries()` creates the log's parent directory, since source logs live in one of their own (`~/org/sources/`)
 - `ingest.find(path, key)` returns one entry, including the `heading` it was stamped under — found by looking back from the marker, since minting the entry's id puts a property line between the two

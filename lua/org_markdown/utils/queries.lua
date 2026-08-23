@@ -65,13 +65,20 @@ local function scan_dir_sync(dir, collected)
 end
 
 --- Public sync markdown file finder
----@param opts? { use_cwd?: boolean, include_patterns?: table, ignore_patterns?: table }
+--- `ignore_files` excludes named files outright, for callers that know the exact
+--- path of a file to skip and shouldn't have to express it as a pattern.
+---@param opts? { use_cwd?: boolean, include_patterns?: table, ignore_patterns?: table, ignore_files?: string[] }
 ---@return string[] markdown_files
 function M.find_markdown_files(opts)
 	opts = opts or {}
 	local use_cwd = opts.use_cwd or false
 	local include_patterns = opts.include_patterns or {}
 	local ignore_patterns = opts.ignore_patterns or config.refile_heading_ignore or {}
+
+	local ignored_files = {}
+	for _, file in ipairs(opts.ignore_files or {}) do
+		ignored_files[platform.path.expand(file)] = true
+	end
 
 	local roots = {}
 	if use_cwd then
@@ -104,7 +111,7 @@ function M.find_markdown_files(opts)
 	-- Step 2: Apply exclude filter
 	local filtered_files = {}
 	for _, filepath in ipairs(included_files) do
-		if not matches_patterns(filepath, ignore_patterns, true) then
+		if not ignored_files[filepath] and not matches_patterns(filepath, ignore_patterns, true) then
 			table.insert(filtered_files, filepath)
 		end
 	end

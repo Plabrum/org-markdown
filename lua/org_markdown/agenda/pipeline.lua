@@ -16,6 +16,7 @@ local utils = require("org_markdown.utils.utils")
 local document = require("org_markdown.utils.document")
 local frontmatter = require("org_markdown.utils.frontmatter")
 local datetime = require("org_markdown.utils.datetime")
+local ingest = require("org_markdown.sync.ingest")
 
 local M = {}
 
@@ -23,10 +24,13 @@ local M = {}
 -- @param file_patterns table|nil Optional patterns to filter files (passed as include_patterns)
 -- @return table { tasks = {}, calendar = {}, all = {} }
 function M.scan_files(file_patterns)
-	-- Apply file patterns for early filtering
+	-- Apply file patterns for early filtering. Ingestion logs drop out on top of
+	-- `ignore_patterns`, so a source log stays out of every view whether or not
+	-- the user's patterns happen to cover where it lives.
 	local files = queries.find_markdown_files({
 		include_patterns = file_patterns or {},
 		ignore_patterns = config.agendas.ignore_patterns or {},
+		ignore_files = ingest.log_paths(),
 	})
 	local agenda_items = { tasks = {}, calendar = {}, all = {} }
 
