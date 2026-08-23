@@ -124,6 +124,7 @@ local M = {
 		find_heading = "<leader>ofh",
 		refile_to_file = "<leader>orf",
 		refile_to_heading = "<leader>orh",
+		insert_link = "<leader>oil",
 		open_quick_note = "<leader>z",
 		sync_all = "<leader>oS",
 	},

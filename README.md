@@ -34,6 +34,7 @@ Command	Description
 :MarkdownAgenda	Open agenda view (cycle views with `[` and `]`)
 :MarkdownRefileFile	Refile content to a file
 :MarkdownRefileHeading	Refile content under a heading
+:MarkdownInsertLink	Insert a link to a file or heading at the cursor
 :MarkdownSyncCalendar	Sync events from Apple Calendar (macOS)
 :MarkdownSyncAll	Sync all enabled sync plugins
 
@@ -300,6 +301,7 @@ opts = {
     find_heading = "<leader>ofh",
     refile_to_file = "<leader>orf",
     refile_to_heading = "<leader>orh",
+    insert_link = "<leader>oil",
     open_quick_note = "<leader>z",
     sync_all = "<leader>oS",
   },

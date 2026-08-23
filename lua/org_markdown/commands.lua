@@ -12,6 +12,7 @@ local capture = require("org_markdown.capture")
 local refile = require("org_markdown.refile")
 local config = require("org_markdown.config")
 local find = require("org_markdown.find")
+local link = require("org_markdown.node.link")
 local editing = require("org_markdown.utils.editing")
 local quick_note = require("org_markdown.quick_note")
 local syntax = require("org_markdown.syntax")
@@ -58,6 +59,10 @@ function M.register()
 		desc = "OrgMarkdown: Open Heading in File",
 	})
 
+	vim.api.nvim_create_user_command("MarkdownInsertLink", link.insert, {
+		desc = "OrgMarkdown: Insert a link to a file or heading",
+	})
+
 	vim.api.nvim_create_user_command("MarkdownPromote", function()
 		editing.promote_heading(0)
 	end, {
@@ -99,6 +104,11 @@ function M.register()
 
 	vim.keymap.set("n", keymaps.refile_to_heading, "<cmd>MarkdownRefileHeading<CR>", {
 		desc = "OrgMarkdown: Refile to heading",
+		silent = true,
+	})
+
+	vim.keymap.set("n", keymaps.insert_link, "<cmd>MarkdownInsertLink<CR>", {
+		desc = "OrgMarkdown: Insert link to node",
 		silent = true,
 	})
 

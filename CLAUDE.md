@@ -116,6 +116,13 @@ The plugin follows a modular architecture with clear separation of concerns:
 - `parser.parse_link(line, init?)` returns `{ id, text, from, to }` for the first link (`from`/`to` are its byte range, for cursor-aware callers); `parser.parse_links(line)` returns all of them
 - `parser.serialize_link(link)` is its exact inverse
 
+**Link Creation** (`node/link.lua`)
+- Interactive counterpart to the by-ID link syntax: pick a target, get a durable link at point
+- `targets(opts?)` lists every linkable node — each markdown file in scope, then every heading inside it
+- `to_target(target)` mints the target's id via `node/id.ensure()` and renders the link with `parser.serialize_link()`; the display text is the heading text, or the file's display name for a file node
+- `insert()` is the editor side: picks a target through `utils/picker.lua` and puts the link at the cursor (`:MarkdownInsertLink`, `keymaps.insert_link`)
+- Linking to a node is what gives it an identity — a target that has never been linked to is identified on the spot
+
 **Async Utilities** (`utils/async.lua`)
 - Custom Promise implementation with `then_()`, `catch_()`, and `await()`
 - `async.run()` wraps coroutines for async operations
