@@ -29,6 +29,9 @@ M.PATTERNS = {
 	trailing_tags = "%s+:[%w:_-]+:$",
 }
 
+-- Reserved tag marking a calendar entry as a task-less (unassigned) focus block.
+M.FOCUS_TAG = "focus"
+
 -- Build valid states from config dynamically
 local function get_valid_states()
 	local config = require("org_markdown.config")
@@ -108,9 +111,11 @@ function M.parse_headline(line)
 	-- Extract all components
 	local tracked, untracked = M.extract_date(line)
 	local start_time, end_time = M.extract_times(line)
+	local state = M.parse_state(line)
+	local tags = M.extract_tags(line)
 
-	return {
-		state = M.parse_state(line),
+	local parsed = {
+		state = state,
 		priority = M.parse_priority(line), -- Now returns just letter, not "#A"
 		tracked = tracked,
 		untracked = untracked,
@@ -118,8 +123,104 @@ function M.parse_headline(line)
 		end_time = end_time,
 		all_day = tracked ~= nil and start_time == nil, -- Only all-day if has date but no time
 		text = M.parse_text(line),
-		tags = M.extract_tags(line),
+		tags = tags,
 	}
+
+	parsed.entry_type = M.classify_entry(parsed)
+	parsed.is_focus = parsed.entry_type == "focus"
+
+	return parsed
+end
+
+--- Classify a calendar/task entry as "task", "meeting", "focus", or nil.
+---
+--- A calendar entry (one with a tracked `<YYYY-MM-DD>` date) is:
+---   - "task"    if it has a TODO-style state (e.g. `# TODO Review PR <2026-08-24>`)
+---   - "focus"   if it has no state but carries the reserved `:focus:` tag
+---               (e.g. `# Deep work <2026-08-24 09:00-11:00> :focus:`) — a
+---               generic, task-less block reserved on the calendar
+---   - "meeting" if it has neither a state nor the `:focus:` tag
+---
+--- A stateful heading with no tracked date is a plain (dateless) "task".
+--- Anything else (no state, no tracked date) is not a task/calendar entry (nil).
+---
+--- @param input string|table Raw heading line, or a table from parse_headline()
+--- @return string|nil "task"|"meeting"|"focus"|nil
+function M.classify_entry(input)
+	local parsed = input
+	if type(input) == "string" then
+		parsed = M.parse_headline(input)
+	end
+
+	if not parsed then
+		return nil
+	end
+
+	if not parsed.tracked then
+		-- No tracked date: only a stateful heading counts as a (dateless) task.
+		-- Focus blocks and meetings are calendar concepts and require a date.
+		return parsed.state and "task" or nil
+	end
+
+	if parsed.state then
+		return "task"
+	end
+
+	local tags = parsed.tags or {}
+	if vim.tbl_contains(tags, M.FOCUS_TAG) then
+		return "focus"
+	end
+
+	return "meeting"
+end
+
+--- @param input string|table Raw heading line, or a table from parse_headline()
+--- @return boolean True if this entry is a task-less focus block
+function M.is_focus_block(input)
+	return M.classify_entry(input) == "focus"
+end
+
+--- @param input string|table Raw heading line, or a table from parse_headline()
+--- @return boolean True if this entry is a meeting (dated, stateless, non-focus)
+function M.is_meeting(input)
+	return M.classify_entry(input) == "meeting"
+end
+
+--- Build a heading line for a task-less (unassigned) focus block.
+---
+--- Focus blocks are calendar entries with a tracked date/time and the
+--- reserved `:focus:` tag, but no TODO state - they hold no task until one
+--- is assigned to them.
+---
+--- @param opts table {
+---   title = string,               -- required
+---   date = string|table,          -- required: "YYYY-MM-DD" or {year, month, day}
+---   start_time = string|nil,      -- optional: "HH:MM"
+---   end_time = string|nil,        -- optional: "HH:MM"
+---   level = number|nil,           -- optional: heading level, defaults to 1
+---   tags = table|nil,             -- optional: extra tags alongside :focus:
+--- }
+--- @return string heading line, e.g. "# Deep work <2026-08-24 Mon 09:00-11:00> :focus:"
+function M.format_focus_block(opts)
+	opts = opts or {}
+
+	local heading_prefix = string.rep("#", opts.level or 1)
+
+	local date_str = datetime.to_org_string(opts.date, {
+		tracked = true,
+		time = opts.start_time,
+		end_time = opts.end_time,
+	})
+
+	local tags = { M.FOCUS_TAG }
+	for _, tag in ipairs(opts.tags or {}) do
+		if tag ~= M.FOCUS_TAG then
+			table.insert(tags, tag)
+		end
+	end
+	local tag_str = ":" .. table.concat(tags, ":") .. ":"
+
+	return table.concat({ heading_prefix, opts.title or "", date_str, tag_str }, " ")
 end
 
 function M.escape_marker(marker, escape_chars)

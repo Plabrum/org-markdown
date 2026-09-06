@@ -72,6 +72,18 @@ The plugin follows a modular architecture with clear separation of concerns:
 - Recognizes states: TODO, IN_PROGRESS, WAITING, CANCELLED, DONE, BLOCKED
 - Priority format: `[#A]`, `[#B]`, `[#C]`
 - Tag format: `:tag1:tag2:` at end of line
+- `classify_entry()`: classifies a dated heading as `"task"`, `"meeting"`, or `"focus"` (see Focus Blocks below); `parse_headline()` exposes this as `entry_type`/`is_focus`
+
+**Focus Blocks**
+- The calendar holds meetings and focus blocks; a focus block is a task-less (unassigned) reservation on the calendar, distinct from both a meeting and a task
+- Represented as a heading with a tracked date/time and the reserved `:focus:` tag, but **no** TODO state: `# Deep work <2025-12-05 Fri 09:00-11:00> :focus:`
+- Classification (`parser.classify_entry()` / `is_focus_block()` / `is_meeting()`), by presence of a tracked date, state, and the `:focus:` tag:
+  - Tracked date + state → `"task"` (the `:focus:` tag is ignored once a task is assigned - it's no longer generic/unassigned)
+  - Tracked date + no state + `:focus:` tag → `"focus"`
+  - Tracked date + no state + no `:focus:` tag → `"meeting"`
+  - No tracked date + state → `"task"` (dateless task); no tracked date + no state → not a task/calendar entry (`nil`)
+- `parser.format_focus_block({ title, date, start_time, end_time, level, tags })` builds a focus-block heading line programmatically (used by the `"Focus Block"` capture template)
+- `agenda.lua`'s `scan_files()` copies `entry_type`/`is_focus` onto every agenda item, so calendar-source views can distinguish focus blocks from meetings/tasks
 
 **Async Utilities** (`utils/async.lua`)
 - Custom Promise implementation with `then_()`, `catch_()`, and `await()`
