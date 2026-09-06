@@ -314,6 +314,86 @@ T["refile edge case - indented bullet"] = function()
 end
 
 -- =========================================================================
+-- Refile-to-heading Level Adjustment Tests (ORGMD-29)
+-- =========================================================================
+
+T["compute_level_offset - heading refiled under same-level heading"] = function()
+	-- Refiling "## Task" under a "## Project" heading should produce a
+	-- level-3 child ("### Task"), not level-4 ("#### Task").
+	local refile_root = document.parse({ "## Task", "Task content" })
+	local offset = refile.compute_level_offset(refile_root.children, 2)
+
+	MiniTest.expect.equality(offset, 1)
+end
+
+T["compute_level_offset - level-1 heading refiled under level-2 heading"] = function()
+	local refile_root = document.parse({ "# Task" })
+	local offset = refile.compute_level_offset(refile_root.children, 2)
+
+	MiniTest.expect.equality(offset, 2)
+end
+
+T["compute_level_offset - preserves relative nesting of subtree"] = function()
+	local refile_root = document.parse({
+		"## Parent",
+		"### Child",
+		"Content",
+	})
+	local offset = refile.compute_level_offset(refile_root.children, 2)
+
+	MiniTest.expect.equality(offset, 1)
+
+	local parent = refile_root.children[1]
+	document.adjust_node_levels(parent, offset)
+
+	MiniTest.expect.equality(parent.level, 3)
+	MiniTest.expect.equality(parent.children[1].level, 4)
+end
+
+T["compute_level_offset - returns 0 for bullet-only selection"] = function()
+	local refile_root = document.parse({ "Just a bullet, no headings" })
+	local offset = refile.compute_level_offset(refile_root.children, 2)
+
+	MiniTest.expect.equality(offset, 0)
+end
+
+T["refile to heading - no doubled # when refiling heading under heading"] = function()
+	-- Regression test for ORGMD-29: refiling a heading block that already
+	-- starts with "#" should not add an extra "#" at the destination.
+	local dest_file = create_test_file("orgmd_29_dest.md", {
+		"## Project",
+		"Existing content",
+	})
+
+	local dest_root = document.read_from_file(dest_file)
+	local target_heading = document.find_heading_by_text(dest_root, "Project")
+	MiniTest.expect.no_equality(target_heading, nil)
+
+	local refile_root = document.parse({ "## Task", "Task content" })
+	local base_level = target_heading.level
+	local offset = refile.compute_level_offset(refile_root.children, base_level)
+
+	for _, child in ipairs(refile_root.children) do
+		document.adjust_node_levels(child, offset)
+		document.insert_child(target_heading, child)
+	end
+
+	document.write_to_file(dest_file, dest_root)
+
+	local result = utils.read_lines(dest_file)
+	local found_task_line = nil
+	for _, line in ipairs(result) do
+		if line:match("Task$") then
+			found_task_line = line
+		end
+	end
+
+	MiniTest.expect.equality(found_task_line, "### Task")
+
+	cleanup_test_files()
+end
+
+-- =========================================================================
 -- Integration Scenarios
 -- =========================================================================
 

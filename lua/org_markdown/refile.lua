@@ -45,6 +45,35 @@ local function verify_refile_write(filepath, expected_lines)
 	return true, nil
 end
 
+--- Compute the level offset to apply so refiled top-level children land
+--- exactly one level below the target heading, preserving their relative
+--- nesting. `document.adjust_node_levels` adds this offset to each node's
+--- *existing* level, so passing `base_level` directly (the target heading's
+--- own level) double-counts the refiled content's own heading level and
+--- produces extra "#" characters (e.g. refiling "## Task" under "## Project"
+--- previously became "#### Task" instead of "### Task").
+--- @param children table Top-level nodes of the refiled content (may be empty for bullet refiles)
+--- @param base_level number Level of the destination heading
+--- @return number Offset to pass to document.adjust_node_levels
+function M.compute_level_offset(children, base_level)
+	if not children or #children == 0 then
+		return 0
+	end
+
+	local min_level = nil
+	for _, child in ipairs(children) do
+		if child.level and (not min_level or child.level < min_level) then
+			min_level = child.level
+		end
+	end
+
+	if not min_level then
+		return 0
+	end
+
+	return base_level + 1 - min_level
+end
+
 function M.get_refile_target()
 	local cursor = vim.api.nvim_win_get_cursor(0)
 	local row = cursor[1] -- Keep 1-indexed for lines array access
@@ -201,10 +230,11 @@ function M.to_heading()
 			-- 6. Parse and adjust levels
 			local refile_root = document.parse(selection.lines)
 			local base_level = target_heading.level
+			local level_offset = M.compute_level_offset(refile_root.children, base_level)
 
 			for _, child in ipairs(refile_root.children) do
 				---@diagnostic disable-next-line: param-type-mismatch
-				document.adjust_node_levels(child, base_level)
+				document.adjust_node_levels(child, level_offset)
 				document.insert_child(target_heading, child)
 			end
 
