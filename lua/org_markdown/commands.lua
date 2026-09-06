@@ -15,6 +15,7 @@ local find = require("org_markdown.find")
 local editing = require("org_markdown.utils.editing")
 local quick_note = require("org_markdown.quick_note")
 local syntax = require("org_markdown.syntax")
+local execution = require("org_markdown.execution")
 
 local M = {}
 
@@ -70,6 +71,24 @@ function M.register()
 		desc = "OrgMarkdown: Demote heading (increase level)",
 	})
 
+	vim.api.nvim_create_user_command("MarkdownTaskStart", function()
+		execution.start(0)
+	end, {
+		desc = "OrgMarkdown: Start task under cursor (auto-pauses previous task)",
+	})
+
+	vim.api.nvim_create_user_command("MarkdownTaskPause", function()
+		execution.pause(0)
+	end, {
+		desc = "OrgMarkdown: Pause task under cursor",
+	})
+
+	vim.api.nvim_create_user_command("MarkdownTaskDone", function()
+		execution.done(0)
+	end, {
+		desc = "OrgMarkdown: Mark task under cursor as done",
+	})
+
 	-- Add configurable keymaps
 	local keymaps = config.keymaps or {}
 	vim.keymap.set("n", keymaps.capture, "<cmd>MarkdownCapture<CR>", {
@@ -101,6 +120,27 @@ function M.register()
 		desc = "OrgMarkdown: Refile to heading",
 		silent = true,
 	})
+
+	if keymaps.task_start then
+		vim.keymap.set("n", keymaps.task_start, "<cmd>MarkdownTaskStart<CR>", {
+			desc = "OrgMarkdown: Start task",
+			silent = true,
+		})
+	end
+
+	if keymaps.task_pause then
+		vim.keymap.set("n", keymaps.task_pause, "<cmd>MarkdownTaskPause<CR>", {
+			desc = "OrgMarkdown: Pause task",
+			silent = true,
+		})
+	end
+
+	if keymaps.task_done then
+		vim.keymap.set("n", keymaps.task_done, "<cmd>MarkdownTaskDone<CR>", {
+			desc = "OrgMarkdown: Mark task done",
+			silent = true,
+		})
+	end
 
 	vim.api.nvim_create_augroup("OrgMarkdownEditing", { clear = true })
 	vim.api.nvim_create_autocmd("FileType", {

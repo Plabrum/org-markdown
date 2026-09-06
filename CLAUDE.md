@@ -137,6 +137,14 @@ All buffer/window creation goes through `utils.open_window()` which handles:
 ### Heading Manipulation
 When inserting content under headings, use `utils.insert_under_heading(file, heading, lines)` which finds or creates the heading and inserts content below it.
 
+### Execution State Machine (`execution.lua`)
+Drives task progress from the heading under the cursor, using the same document-tree mutate/serialize/diff/apply flow as `utils/editing.lua`:
+- `execution.start(bufnr)`: transitions the heading at the cursor to `IN_PROGRESS`. If a different task was previously started (tracked in-memory, in this buffer or another open/on-disk file), it is auto-paused back to `TODO` first.
+- `execution.pause(bufnr)`: transitions an `IN_PROGRESS` heading at the cursor back to `TODO`.
+- `execution.done(bufnr)`: transitions the heading at the cursor to `DONE` (reuses `Node:set_state()`, so `COMPLETED_AT` is handled automatically).
+
+Exposed as commands `MarkdownTaskStart`, `MarkdownTaskPause`, `MarkdownTaskDone`, bound by default to `keymaps.task_start`, `keymaps.task_pause`, `keymaps.task_done` (`<leader>ots`, `<leader>otp`, `<leader>otd`).
+
 ### Async Operations
 User prompts and capture buffers use the custom async system. Wrap async functions with `async.run()` and use `:await()` to wait for promises.
 
