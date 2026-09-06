@@ -298,8 +298,11 @@ When creating a sync plugin:
   supports_auto_sync = true,               -- Optional: Enable auto-sync support
   command_name = "MarkdownSyncFoo",        -- Optional: Override default command name
   keymap = "<leader>osp",                  -- Optional: Default keymap
+  mode = "ingestion",                      -- Optional: "replace" (default) or "ingestion"
 }
 ```
+
+**`mode = "ingestion"`** (append-only): instead of fully replacing `sync_file` on each pull, new items are appended below whatever is already in the file and existing content is never rewritten. Each appended entry is stamped with a stable dedup key (`sync.manager.item_key(item)` - uses `item.id` if the plugin supplies one, otherwise a hash of title/dates/body) recorded as `<!-- id: <key> -->`; re-running a sync skips items whose key is already present, so entries are never duplicated. Use this for source/ingestion logs that accumulate over time rather than mirroring current external state.
 
 #### Item Data Structure
 
