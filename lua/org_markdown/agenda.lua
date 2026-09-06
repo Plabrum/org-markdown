@@ -182,6 +182,9 @@ local function scan_files(file_patterns)
 					file = file,
 					tags = p.tags,
 					source = display_name,
+					-- NEW: Distinguish task / meeting / focus block calendar entries
+					entry_type = p.entry_type,
+					is_focus = p.is_focus,
 					-- NEW: Hierarchy fields
 					children = {},
 					depth = depth,

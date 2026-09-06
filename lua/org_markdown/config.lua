@@ -50,6 +50,14 @@ local M = {
 				filename = "~/org/refile.md",
 				heading = "",
 			},
+			-- Task-less (unassigned) calendar block: tracked date/time + the
+			-- reserved :focus: tag, no TODO state. See utils/parser.lua
+			-- classify_entry()/format_focus_block() for how these are read back.
+			["Focus Block"] = {
+				template = "# %? %T :focus:",
+				filename = "~/org/refile.md",
+				heading = "",
+			},
 		},
 	},
 	agendas = {

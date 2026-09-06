@@ -151,6 +151,13 @@ Priorities
   - Supported: [#A], [#B], [#C]
   - Tasks are ranked in AgendaTasks
 
+Focus Blocks
+  - A task-less (unassigned) reservation on the calendar - distinct from a meeting and from a task
+  - Written as a dated heading with no TODO state plus the reserved `:focus:` tag
+  - Example: `## Deep work <2025-06-21 Sat 09:00-11:00> :focus:`
+  - Programmatic access: `parser.classify_entry(line)` returns `"focus"`, `"meeting"`, or `"task"`; `parser.format_focus_block({ title, date, start_time, end_time })` builds one
+  - Capture it via the built-in `"Focus Block"` template (`# %? %T :focus:`)
+
 
 ### Calendar Sync
 
