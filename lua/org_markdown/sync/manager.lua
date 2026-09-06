@@ -206,6 +206,16 @@ local ITEM_SCHEMA = {
 		type = "string",
 		required = false,
 	},
+
+	-- Stable dedup key (optional - used by ingestion/append-only mode; see M.item_key)
+	id = {
+		type = "string",
+		required = false,
+		validate = function(v)
+			return not v or v ~= ""
+		end,
+		error_msg = "id must be a non-empty string if provided",
+	},
 }
 
 --- Validate an item against the schema
@@ -304,6 +314,13 @@ function M.register_plugin(plugin_module)
 	-- Set sync_file from plugin definition (can be overridden in user config)
 	if not config.sync.plugins[plugin_module.name].sync_file then
 		config.sync.plugins[plugin_module.name].sync_file = plugin_module.sync_file
+	end
+
+	-- Set sync mode from plugin definition (can be overridden in user config).
+	-- mode = "ingestion" appends new items to the sync file and never rewrites
+	-- existing content (see M.item_key / append_sync_file). Default is "replace".
+	if config.sync.plugins[plugin_module.name].mode == nil and plugin_module.mode then
+		config.sync.plugins[plugin_module.name].mode = plugin_module.mode
 	end
 
 	-- Merge default config into config.sync.plugins[name]
@@ -428,6 +445,77 @@ local function format_item_as_markdown(item, plugin_config)
 end
 
 -- =========================================================================
+-- STABLE ITEM KEYS (append-only ingestion dedup)
+-- =========================================================================
+
+-- Largest 32-bit prime below 2^32; keeps the rolling hash in a fixed-width
+-- range without needing bitwise ops (portable across plain Lua and LuaJIT).
+local HASH_MODULUS = 4294967291
+
+--- Deterministic, non-cryptographic string hash (djb2-style), hex-encoded.
+--- @param str string
+--- @return string
+local function stable_hash(str)
+	local hash = 5381
+	for i = 1, #str do
+		hash = (hash * 33 + str:byte(i)) % HASH_MODULUS
+	end
+	return string.format("%08x", hash)
+end
+
+--- Compute a stable per-item dedup key for ingestion/append-only mode.
+--- Uses the plugin-supplied `item.id` when present (plugins that have a
+--- natural stable identifier, e.g. a meeting UID, should set this).
+--- Otherwise derives a deterministic key from title + dates + body, so the
+--- same logical item produces the same key across separate sync runs.
+--- @param item table Item data structure
+--- @return string Stable key
+function M.item_key(item)
+	if item.id and item.id ~= "" then
+		return tostring(item.id)
+	end
+
+	local function date_part(d)
+		return d and string.format("%04d-%02d-%02d", d.year, d.month, d.day) or ""
+	end
+
+	local parts = {
+		item.title or "",
+		date_part(item.start_date),
+		date_part(item.due_date),
+		date_part(item.end_date),
+		item.body or item.description or "",
+	}
+
+	return stable_hash(table.concat(parts, "\30"))
+end
+
+--- Scan existing sync-file lines for previously appended item keys.
+--- @param lines table Array of file lines
+--- @return table Set of key -> true
+local function collect_existing_ids(lines)
+	local ids = {}
+	for _, line in ipairs(lines) do
+		local id = line:match("^<!%-%- id: (.+) %-%->$")
+		if id then
+			ids[id] = true
+		end
+	end
+	return ids
+end
+
+--- Format an item as markdown lines, stamped with its stable dedup key.
+--- @param item table Item data structure
+--- @param plugin_config table Plugin configuration
+--- @param key string Stable key from M.item_key
+--- @return table Array of markdown lines
+local function format_ingestion_item(item, plugin_config, key)
+	local lines = format_item_as_markdown(item, plugin_config)
+	table.insert(lines, 2, string.format("<!-- id: %s -->", key))
+	return lines
+end
+
+-- =========================================================================
 -- FILE OPERATIONS
 -- =========================================================================
 
@@ -480,6 +568,70 @@ local function write_sync_file(items, plugin_name, plugin_config, stats)
 	-- Write to file (simple - just replace content)
 	local filepath = vim.fn.expand(plugin_config.sync_file)
 	utils.write_lines(filepath, lines)
+end
+
+--- Append new items to a sync file without ever rewriting existing content
+--- (ingestion mode). Items whose stable key (M.item_key) already appears in
+--- the file, or earlier in this same batch, are skipped so re-running a sync
+--- never duplicates entries.
+--- @param items table Array of items
+--- @param plugin_config table Plugin configuration
+--- @return number, number Appended count, skipped (already present) count
+local function append_sync_file(items, plugin_config)
+	local filepath = vim.fn.expand(plugin_config.sync_file)
+	local existing_lines = utils.read_lines(filepath)
+	local seen_ids = collect_existing_ids(existing_lines)
+	local file_is_new = #existing_lines == 0
+
+	local new_lines = {}
+	local appended = 0
+	local skipped = 0
+
+	for _, item in ipairs(items) do
+		local key = M.item_key(item)
+		if seen_ids[key] then
+			skipped = skipped + 1
+		else
+			seen_ids[key] = true
+			appended = appended + 1
+			for _, line in ipairs(format_ingestion_item(item, plugin_config, key)) do
+				table.insert(new_lines, line)
+			end
+		end
+	end
+
+	-- Never touch the file (and never write an empty header-only file) if
+	-- there's nothing new to add - append-only means additive-or-nothing.
+	if appended == 0 then
+		return appended, skipped
+	end
+
+	local out_lines = {}
+	for _, line in ipairs(existing_lines) do
+		table.insert(out_lines, line)
+	end
+
+	if file_is_new then
+		if plugin_config.file_heading and plugin_config.file_heading ~= "" then
+			table.insert(out_lines, "---")
+			table.insert(out_lines, "name: " .. plugin_config.file_heading)
+			table.insert(out_lines, "---")
+			table.insert(out_lines, "")
+		end
+		table.insert(
+			out_lines,
+			"<!-- APPEND-ONLY: entries below are never rewritten; new entries are appended on each sync. -->"
+		)
+		table.insert(out_lines, "")
+	end
+
+	for _, line in ipairs(new_lines) do
+		table.insert(out_lines, line)
+	end
+
+	utils.write_lines(filepath, out_lines)
+
+	return appended, skipped
 end
 
 -- =========================================================================
@@ -544,8 +696,15 @@ function M.sync_plugin(plugin_name)
 			return valid
 		end, items)
 
-		-- Write to sync file
-		write_sync_file(valid_items, plugin_name, plugin_config, stats)
+		-- Write to sync file: ingestion mode appends and dedups, never rewrites
+		-- existing content; the default "replace" mode fully regenerates the file.
+		local ingestion_mode = plugin_config.mode == "ingestion"
+		local appended, skipped
+		if ingestion_mode then
+			appended, skipped = append_sync_file(valid_items, plugin_config)
+		else
+			write_sync_file(valid_items, plugin_name, plugin_config, stats)
+		end
 
 		-- Clear syncing flag
 		plugin._is_syncing = false
@@ -559,15 +718,33 @@ function M.sync_plugin(plugin_name)
 		end
 
 		-- Success notification
-		local count = stats.count or #valid_items
 		local msg
-		if count == 0 then
-			msg = string.format("Sync completed for %s: file cleared (all items deleted)", plugin.description or plugin_name)
-		else
-			msg = string.format("Synced %d items from %s", count, plugin.description or plugin_name)
-			local invalid_count = #items - #valid_items
+		local invalid_count = #items - #valid_items
+		if ingestion_mode then
+			if appended == 0 then
+				msg = string.format(
+					"Sync completed for %s: no new items (%d already present)",
+					plugin.description or plugin_name,
+					skipped
+				)
+			else
+				msg = string.format("Appended %d new items from %s", appended, plugin.description or plugin_name)
+				if skipped > 0 then
+					msg = msg .. string.format(" (%d already present)", skipped)
+				end
+			end
 			if invalid_count > 0 then
-				msg = msg .. string.format(" (%d skipped)", invalid_count)
+				msg = msg .. string.format(", %d skipped (invalid)", invalid_count)
+			end
+		else
+			local count = stats.count or #valid_items
+			if count == 0 then
+				msg = string.format("Sync completed for %s: file cleared (all items deleted)", plugin.description or plugin_name)
+			else
+				msg = string.format("Synced %d items from %s", count, plugin.description or plugin_name)
+				if invalid_count > 0 then
+					msg = msg .. string.format(" (%d skipped)", invalid_count)
+				end
 			end
 		end
 		vim.schedule(function()
@@ -709,8 +886,14 @@ function M.pull_all_async()
 					return validate_item(item, plugin_name)
 				end, items)
 
-				-- Write to sync file (even if empty - clears deleted items)
-				write_sync_file(valid_items, plugin_name, plugin_config, stats)
+				-- Write to sync file: ingestion mode appends and dedups (no-op when
+				-- there's nothing new); replace mode rewrites fully, even if empty,
+				-- so deleted items are cleared.
+				if plugin_config.mode == "ingestion" then
+					append_sync_file(valid_items, plugin_config)
+				else
+					write_sync_file(valid_items, plugin_name, plugin_config, stats)
+				end
 
 				plugin._is_syncing = false
 			end)
