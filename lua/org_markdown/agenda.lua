@@ -15,6 +15,7 @@ local agenda_formatters = require("org_markdown.agenda_formatters")
 local datetime = require("org_markdown.utils.datetime")
 local frontmatter = require("org_markdown.utils.frontmatter")
 local preview = require("org_markdown.utils.preview")
+local execution_log = require("org_markdown.utils.execution_log")
 
 local M = {}
 
@@ -158,6 +159,12 @@ local function scan_files(file_patterns)
 	})
 	local agenda_items = { tasks = {}, calendar = {}, all = {} }
 
+	-- Execution state is derived from the log, not stored in heading text.
+	-- Reduce once per scan and stamp every heading below with its state and
+	-- whether it's the single currently-active task.
+	local log_path = vim.fn.expand(config.execution and config.execution.log_file or "")
+	local execution = execution_log.derive(log_path)
+
 	for _, file in ipairs(files) do
 		local lines = utils.read_lines(file)
 		local display_name = frontmatter.get_display_name(file, lines)
@@ -187,6 +194,11 @@ local function scan_files(file_patterns)
 					depth = depth,
 					node = node,
 				}
+
+				-- Execution state is derived, not parsed from the heading.
+				local exec_id = get_item_id(item)
+				item.execution_state = execution.states[exec_id]
+				item.is_active = execution.active == exec_id
 
 				-- Recursively collect children
 				for _, child in ipairs(node.children or {}) do
@@ -937,6 +949,19 @@ end
 -- Returns { tasks = [], calendar = [], all = [] }
 function M.scan_files(file_patterns)
 	return scan_files(file_patterns)
+end
+
+-- Public API: Run the filter -> sort -> group -> render pipeline for a
+-- configured view and return the rendered lines, without opening a window.
+-- Useful for headless testing and for callers that want rendered output
+-- directly (e.g. notifications, tests).
+-- Returns lines, line_to_item
+function M.process_view(view_id)
+	local view_def = find_view(view_id)
+	if not view_def then
+		return nil, nil
+	end
+	return process_view(view_id, view_def)
 end
 
 return M
