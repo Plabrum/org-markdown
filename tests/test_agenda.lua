@@ -3,6 +3,7 @@ local T = MiniTest.new_set()
 
 local agenda = require("org_markdown.agenda")
 local config = require("org_markdown.config")
+local helpers = require("helpers")
 
 -- Test view configuration validation
 T["config validation - valid view config"] = function()
@@ -194,6 +195,79 @@ T["tabbed agenda - function exists"] = function()
 
 	-- Verify tabbed agenda function exists
 	MiniTest.expect.equality(type(agenda.show_tabbed_agenda), "function")
+end
+
+-- Source/ingestion logs must be untracked by construction: default
+-- agendas.ignore_patterns should keep headings in "*.log.md" files and files
+-- under "logs/" out of every agenda source bucket, with no config step.
+T["scan_files - excludes source/ingestion logs by default"] = function()
+	local workspace = helpers.create_temp_workspace({
+		["work.md"] = { "## TODO Real task <2025-01-01>" },
+		["ingest.log.md"] = { "## TODO Logged task <2025-01-01>" },
+		["logs/raw.md"] = { "## TODO Raw ingested task <2025-01-01>" },
+	})
+
+	local original_paths = config.refile_paths
+	config.setup({})
+	config.refile_paths = { workspace }
+
+	local all_data = agenda.scan_files()
+
+	local function has_file_suffix(items, suffix)
+		for _, item in ipairs(items) do
+			if item.file:match(suffix .. "$") then
+				return true
+			end
+		end
+		return false
+	end
+
+	-- Sanity check: the non-log file's task is present in every bucket.
+	for _, bucket in ipairs({ "tasks", "calendar", "all" }) do
+		MiniTest.expect.equality(has_file_suffix(all_data[bucket], "work%.md"), true)
+	end
+
+	-- The source logs must never appear in any source bucket.
+	for _, bucket in ipairs({ "tasks", "calendar", "all" }) do
+		MiniTest.expect.equality(has_file_suffix(all_data[bucket], "ingest%.log%.md"), false)
+		MiniTest.expect.equality(has_file_suffix(all_data[bucket], "logs/raw%.md"), false)
+	end
+
+	config.refile_paths = original_paths
+	helpers.cleanup_temp(workspace)
+end
+
+-- Every configured agenda view (including "inbox", whose file_patterns would
+-- otherwise re-include "ingest.log.md" by substring match on "refile" not
+-- applying, but could match other include patterns) must exclude log files.
+T["scan_files - excludes source logs across all default views"] = function()
+	local workspace = helpers.create_temp_workspace({
+		["refile.md"] = { "## TODO Real refile task <2025-01-01>" },
+		["refile.log.md"] = { "## TODO Logged refile task <2025-01-01>" },
+		["logs/refile.md"] = { "## TODO Logged refile task 2 <2025-01-01>" },
+	})
+
+	local original_paths = config.refile_paths
+	config.setup({})
+	config.refile_paths = { workspace }
+
+	for _, view in ipairs(config.get_ordered_views()) do
+		local file_patterns = view.filters and view.filters.file_patterns or nil
+		local all_data = agenda.scan_files(file_patterns)
+
+		for _, bucket in ipairs({ "tasks", "calendar", "all" }) do
+			for _, item in ipairs(all_data[bucket]) do
+				MiniTest.expect.equality(
+					item.file:match("%.log%.md$") ~= nil or item.file:match("/logs/") ~= nil,
+					false,
+					string.format("view '%s' bucket '%s' leaked source log file: %s", view.id, bucket, item.file)
+				)
+			end
+		end
+	end
+
+	config.refile_paths = original_paths
+	helpers.cleanup_temp(workspace)
 end
 
 return T
