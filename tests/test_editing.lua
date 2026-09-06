@@ -66,4 +66,73 @@ T["Status cycling with high priority"] = function()
 	MiniTest.expect.equality(result[1], "## IN_PROGRESS [#A] Critical bug")
 end
 
+-- continue_todo tests
+T["Non-bullet line returns nil"] = function()
+	local line = "Just a plain line"
+	local result = editing.continue_todo(line, #line)
+	MiniTest.expect.equality(result, nil)
+end
+
+T["Enter at end of plain bullet continues with new bullet"] = function()
+	local line = "- Buy milk"
+	local result, cursor_col = editing.continue_todo(line, #line)
+	MiniTest.expect.equality(result, { "- Buy milk", "- " })
+	MiniTest.expect.equality(cursor_col, 2)
+end
+
+T["Enter on empty plain bullet removes it"] = function()
+	local line = "- "
+	local result = editing.continue_todo(line, #line)
+	MiniTest.expect.equality(result, { "" })
+end
+
+T["Enter at end of checkbox bullet continues with new unchecked bullet"] = function()
+	local line = "- [X] Buy milk"
+	local result, cursor_col = editing.continue_todo(line, #line)
+	MiniTest.expect.equality(result, { "- [X] Buy milk", "- [ ] " })
+	MiniTest.expect.equality(cursor_col, 6)
+end
+
+T["Enter on empty checkbox bullet removes it"] = function()
+	local line = "- [ ] "
+	local result = editing.continue_todo(line, #line)
+	MiniTest.expect.equality(result, { "" })
+end
+
+T["Enter on empty nested bullet removes it"] = function()
+	local line = "  - "
+	local result = editing.continue_todo(line, #line)
+	MiniTest.expect.equality(result, { "" })
+end
+
+T["Enter mid-line on plain bullet splits the line"] = function()
+	local line = "- Buy milk and eggs"
+	local col = #"- Buy milk" -- cursor right after "milk"
+	local result, cursor_col = editing.continue_todo(line, col)
+	MiniTest.expect.equality(result, { "- Buy milk", "-  and eggs" })
+	MiniTest.expect.equality(cursor_col, 2)
+end
+
+T["Enter mid-line on checkbox bullet splits the line"] = function()
+	local line = "- [ ] Buy milk and eggs"
+	local col = #"- [ ] Buy milk" -- cursor right after "milk"
+	local result, cursor_col = editing.continue_todo(line, col)
+	MiniTest.expect.equality(result, { "- [ ] Buy milk", "- [ ]  and eggs" })
+	MiniTest.expect.equality(cursor_col, 6)
+end
+
+T["Enter mid-line preserves indentation on nested bullet"] = function()
+	local line = "  - Sub item text"
+	local col = #"  - Sub item" -- cursor right after "item"
+	local result, cursor_col = editing.continue_todo(line, col)
+	MiniTest.expect.equality(result, { "  - Sub item", "  -  text" })
+	MiniTest.expect.equality(cursor_col, 4)
+end
+
+T["Enter with cursor inside the bullet marker falls back to default"] = function()
+	local line = "- Buy milk"
+	local result = editing.continue_todo(line, 1) -- cursor between "-" and " "
+	MiniTest.expect.equality(result, nil)
+end
+
 return T
