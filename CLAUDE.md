@@ -48,6 +48,15 @@ The plugin follows a modular architecture with clear separation of concerns:
 - All views are automatically available for tabbed navigation using `[` and `]` keys
 - Built-in formatters: "blocks", "timeline"
 - Date formats: `<YYYY-MM-DD>` for tracked/scheduled items, `[YYYY-MM-DD]` for non-agenda timestamps
+- Execution state (STARTED/PAUSED/DONE) is **derived**, not stored in heading text — see `utils/execution_log.lua`
+
+**Execution Log** (`utils/execution_log.lua`)
+- Execution state is separate from the workflow `state` field (TODO/IN_PROGRESS/DONE/...) parsed from heading text
+- Reads an append-only log at `config.execution.log_file` (default `~/org/execution.log`), one event per line: `<ISO8601 timestamp> <VERB> <file>:<line>`
+- Verbs: `START`, `PAUSE`, `DONE`. Task identity is `file:line`, matching `agenda.lua`'s `get_item_id()`
+- `M.reduce(events)` folds events into `{ states = { [id] = "STARTED"|"PAUSED"|"DONE" }, active = id|nil }`
+- Starting a task always demotes any previously active task to `PAUSED` — at most one task is ever active
+- `agenda.lua`'s `scan_files()` derives this once per scan and stamps every heading with `item.execution_state` and `item.is_active`; `agenda_formatters.lua`'s timeline formatter renders `[STATE]` and marks the active task with `▶`
 
 **Capture System** (`capture.lua`)
 - Template-based capture with expansion markers (`%t`, `%u`, `%?`, etc.)

@@ -101,6 +101,11 @@ local M = {
 			},
 		},
 	},
+	-- Execution state (STARTED/PAUSED/DONE) is derived from an append-only
+	-- log rather than stored in heading text. See utils/execution_log.lua.
+	execution = {
+		log_file = "~/org/execution.log",
+	},
 	window_method = "vertical",
 	picker = "snacks", -- or "telescope"
 	-- picker = "telescope",

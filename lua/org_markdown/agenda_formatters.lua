@@ -86,15 +86,23 @@ function M.format_blocks(item, indent)
 end
 
 -- Format item in timeline style
+--
+-- Execution state (STARTED/PAUSED/DONE) is derived (see utils/execution_log.lua)
+-- and rendered as a `[STATE]` tag alongside the workflow state. The single
+-- currently-active task (item.is_active) is marked with a leading "▶" so it's
+-- visually distinguishable from other STARTED/PAUSED tasks.
 function M.format_timeline(item, indent)
 	indent = indent or ""
 	local parts = {}
 
 	if item.state then
-		-- Task format: STATE [priority] title (time) :tags:
+		-- Task format: STATE [priority] [EXEC_STATE] title (time) :tags:
 		table.insert(parts, item.state)
 		if item.priority then
 			table.insert(parts, string.format("[%s]", item.priority))
+		end
+		if item.execution_state then
+			table.insert(parts, string.format("[%s]", item.execution_state))
 		end
 		table.insert(parts, item.title)
 
@@ -105,18 +113,22 @@ function M.format_timeline(item, indent)
 			table.insert(parts, time_str)
 		end
 	else
-		-- Calendar format: time title :tags:
+		-- Calendar format: time [EXEC_STATE] title :tags:
 		if item.all_day then
 			table.insert(parts, "[ALL-DAY]")
 		elseif item.start_time then
 			local time_str = item.end_time and item.start_time .. "-" .. item.end_time or item.start_time
 			table.insert(parts, time_str)
 		end
+		if item.execution_state then
+			table.insert(parts, string.format("[%s]", item.execution_state))
+		end
 		table.insert(parts, item.title)
 	end
 
 	local tags_str = build_tags_str(item.tags)
-	return indent .. table.concat(parts, " ") .. tags_str
+	local active_marker = item.is_active and "▶ " or ""
+	return indent .. active_marker .. table.concat(parts, " ") .. tags_str
 end
 
 -- Main formatting entry point
