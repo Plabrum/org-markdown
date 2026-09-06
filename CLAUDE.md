@@ -149,7 +149,7 @@ The agenda system uses a configurable view architecture that processes items thr
 ```lua
 agendas = {
   window_method = "float",                    -- "float", "vertical", or "horizontal"
-  ignore_patterns = { "*.archive.md" },      -- Patterns to exclude from all agenda views
+  ignore_patterns = { "*.archive.md", "*.log.md", "logs/*" },  -- Patterns to exclude from all agenda views
   views = { ... }                             -- View definitions (see below)
 }
 ```
@@ -158,6 +158,8 @@ The `ignore_patterns` setting applies globally to all agenda views and supports 
 - Exact filename: `"archive.md"`
 - Wildcard: `"*.archive.md"` (matches all files ending in `.archive.md`)
 - Directory: `"archive/*"` (matches all files in paths containing `archive/`)
+
+**Source/ingestion logs are untracked by convention.** Files named `*.log.md`, or any file under a `logs/` directory, are excluded from every agenda view by default via `ignore_patterns` above — no per-project config step is required. Headings inside these files (e.g. a raw ingestion/source log) will never appear in any agenda view. `ignore_patterns` is applied after a view's `filters.file_patterns` include list, so a view cannot accidentally re-include a source log by matching its filename (e.g. `file_patterns = { "log" }` still excludes `foo.log.md`).
 
 #### View Configuration Structure
 Views are defined as an object in `config.agendas.views`, keyed by view ID. Custom views merge additively with defaults (similar to capture templates). Each view has the following structure:

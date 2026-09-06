@@ -54,7 +54,11 @@ local M = {
 	},
 	agendas = {
 		window_method = "float",
-		ignore_patterns = { "*.archive.md" }, -- Patterns to exclude from agenda scanning
+		-- Patterns to exclude from agenda scanning.
+		-- Source/ingestion logs are untracked by convention: name them "*.log.md"
+		-- or put them under a "logs/" directory and they are excluded from every
+		-- agenda view by default, with no config step required.
+		ignore_patterns = { "*.archive.md", "*.log.md", "logs/*" },
 		views = {
 			tasks = {
 				order = 1,
