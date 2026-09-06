@@ -123,6 +123,9 @@ local M = {
 		refile_to_heading = "<leader>orh",
 		open_quick_note = "<leader>z",
 		sync_all = "<leader>oS",
+		task_start = "<leader>ots",
+		task_pause = "<leader>otp",
+		task_done = "<leader>otd",
 	},
 	checkbox_states = {
 		" ",
